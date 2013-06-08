@@ -1,0 +1,45 @@
+package tide;
+
+enum LabelType {
+  NONE = 0;
+  POSITIVE = 1;
+  NEGATIVE = 2;
+}
+
+message BoundingBox {
+  required uint32 x1 = 1; // min x coord
+  required uint32 y1 = 2; // min y coord
+  required uint32 x2 = 3; // max x coord
+  required uint32 y2 = 4; // max y coord
+}
+
+// Represents a photo in an object class
+message Photo {
+	required fixed64 id = 1;  // unique id of photo
+	required LabelType label = 2; // type of photo
+  repeated BoundingBox regions = 3;  // bounding box for each instance of object
+}
+
+// Represents a set of photos of an object
+message Object {
+  required uint32 id = 1;
+  required string name = 2;
+  required string description = 3;
+  required double purity = 4;
+  repeated Photo photos = 5;
+}
+
+message ObjectList {
+  repeated Object entries = 1;
+}
+
+message ExperimentTrial {
+  message ImageLabelPair {
+    required uint64 image_id = 1;
+    required uint32 object_id = 2;
+  }
+
+  repeated ImageLabelPair training = 1;
+  repeated ImageLabelPair testing = 2;
+  repeated uint64 heldout_aux_images = 3;
+}
