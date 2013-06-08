@@ -1,0 +1,7 @@
+CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
+
+
+PY_LIBRARY(
+  NAME    pyglog
+  SOURCES __init__.py
+)

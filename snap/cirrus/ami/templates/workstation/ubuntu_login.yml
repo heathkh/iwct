@@ -1,0 +1,10 @@
+- name: Enable password for user
+  shell: echo "ubuntu:$ubuntu_password" | chpasswd
+
+- name: Enable ssh password authentication
+  lineinfile: dest=/etc/ssh/sshd_config regexp="^PasswordAuthentication" insertafter="^#PasswordAuthentication" line="PasswordAuthentication yes"
+
+- name: Restart ssh service 
+  service: name=ssh state=restarted
+
+  

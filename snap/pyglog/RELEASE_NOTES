@@ -1,0 +1,11 @@
+Pyglog -- a logging facility for Python
+
+RELEASE NOTES
+=============
+
+v1.2 Bugfix release
+      - Fixes a bug in which custom log-levels
+        were not always obeyed.
+
+v1.1 Initial public release
+

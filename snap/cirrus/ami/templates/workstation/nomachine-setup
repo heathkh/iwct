@@ -1,0 +1,655 @@
+#! /bin/bash
+#: Title       : nomachine-setup
+#: Date Created: Thu Jun 28 05:35:06 PDT 2012
+#: Last Edit   : Sun Sep  9 11:56:46 PDT 2012 
+#: Author      : Agnelo de la Crotche (please_try_again)
+#: Version     : 1.3
+#: Description : install or update Nomachine NX server and client
+#: Source: http://forums.opensuse.org/content/126-setting-up-nx-server-part-ii-nomachine-nx.html
+
+# You may change the default values below.
+NXPort=9123
+NXDisplayBase=2000
+SHeight=900 # Session default height
+SWidth=1440 # Session default width
+xdmSession="/etc/X11/xdm/Xsession"
+kdeStartCmd="/usr/bin/dbus-launch --exit-with-session startkde"
+gnomeStartCmd="/etc/gdm/Xsession gnome-session"
+#xdmSession="/usr/local/config/x11/XremoteSession"
+#kdeStartCmd="/usr/local/config/kdm/Xsession startkde"
+#gnomeStartCmd="/etc/gdm/Xsession gnome-session session=gnome-fallback"
+curlTimeout=30
+
+AuthorizeKeysFile2=yes # revert to openssh default (check authorized_keys2 as well)
+
+# recursively remove /usr/NX/etc and /usr/NX/home while deinstalling
+# If these directories exist and are not empty, reinstalling NoMachine
+# will fail.
+PURGE_CONFIG=yes
+
+
+# Don't use FreeNX to forward Nomachine connections and don't restore FreeNX user and ownership.
+# This soption is only relevant if you use both nomachine and FreeNX servers.
+# You'd better leave it commented out if you want to still be able to connect to FreeNX. 
+# NOFREENX=YES
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# You should not change these values
+prg=$(basename $0)
+baseurl="http://www.nomachine.com/select-package.php?os=linux&id=1"
+Pkg="tar.gz"
+Upd="tar -xvzf"
+Ins="tar -xvzf"
+Tpl="redhat"
+           
+declare -l os
+nxdir=/usr/NX
+nxbin=$nxdir/bin
+nxetc=$nxdir/etc
+nmhome=$nxdir/home/nx
+skey=$nxdir/share/keys/default.id_dsa.key
+FREENX=NO
+
+freenxetcdir=/etc/nxserver
+
+# You can add other distros here
+# package format        update command              install command             uninstall command                      nx template                    package cache
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+suselinux_pkg=rpm     ; suselinux_upd="zypper in" ; suselinux_ins="zypper in" ; suselinux_del="zypper rm"              ; suselinux_tpl="suse"         ; suselinux_dir=/var/cache/zypper/RPMS
+fedora_pkg=rpm        ; fedora_upd="yum update"   ; fedora_ins="yum install"  ; fedora_del="yum remove"                ; fedora_tpl="fedora"          ; fedora_dir=/var/cache/yum
+mandrivalinux_pkg=rpm ; mandrivalinux_upd="urpmi" ; mandrivalinux_ins="urpmi" ; mandrivalinux_del="urpme"              ; mandrivalinux_tpl="mandrake" ; mandrivalinux_dir=/var/cache/urpmi/rpms
+ubuntu_pkg=deb        ; ubuntu_upd="dpkg -i"      ; ubuntu_ins="dpkg -i"      ; ubuntu_del="apt-get --purge remove"    ; ubuntu_tpl="debian"          ; ubuntu_dir=/var/cache/apt/archives
+linuxmint_pkg=deb     ; linuxmint_ins="dpkg -i"   ; linuxmint_upd="dpkg -i"   ; linuxmint_del="apt-get --purge remove" ; linuxmint_tpl="debian"       ; linuxmint_dir=/var/cache/apt/archives
+archlinux_pkg=tar.gz  ; archlinux_ins="tar -xvzf" ; archlinux_upd="tar -xvzf" ; archlinux_del=""                       ; archlinux_tpl="fedora"       ; archlinux_dir=/var/cache/pacman/pkg
+
+
+arch=$(uname -m) ; arch=${arch/i?/i3}
+tmpdir=${TMPDIR:-/tmp}
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+function syntax {
+exec cat << EOFSYNTAX
+$prg - install or update NoMachine NX server and client
+
+usage:   $prg [options] 
+
+options: 
+       -h --help            displays this help.
+       -s --server          Install/update NX server only.
+       -c --client          Install/update NX client only.
+       without options      Install/update NX client ans server.
+       -p --port            Use alternate SSH port.
+       -n --nofreenx        disable freenx (if it's installed).
+       -k --keys            create DSA key pair .
+       -q --quick           don't check for available updates. 
+       -o --offline         don't check NoMachinne website.
+       -d --deinstall       deinstall NX server without deleting nx user.         
+EOFSYNTAX
+exit
+}
+
+
+function deinstall_nx {
+if ( which $nxbin/nxserver &>/dev/null ) ; then
+	printf "\033[32;1m - deinstalling NoMachine server...\033[37;0m\n"
+	if [ "$FREENX" ] ; then
+		printf "\033[32;1m - FreeNX found, preserving nx user.\033[37;0m\n"
+		case $pkg in
+			rpm) rpm -v -e --noscripts nxserver nxnode ;;
+			deb) dpkg --no-triggers --remove nxserver nxnode ;;
+			tar.gz)
+				 rm -f /etc/init.d/nx{server,node} &>/dev/null
+			 ;;
+		esac
+	else
+		case $pkg in
+			tar.gz) 
+				$nxdir/scripts/setup/nxserver --uninstall $archlinux_tpl	
+				$nxdir/scripts/setup/nxnode --uninstall	$archlinux_tpl
+			;;
+			rpm|deb) $del nxserver nxnode ;;
+		esac
+	fi
+	if [ "$PURGE_CONFIG" ] ; then
+		[ -d $nxdir ] && rm -r $nxdir &>/dev/null
+		rm -f /etc/init.d/{nxserver,nxsensor} &>/dev/null
+	fi 
+else
+	printf "\033[31;1mNoMachine NX server is not installed.\033[37;0m\n"
+fi
+exit
+}
+
+
+function geturls {
+[ "curlTimeout" ] && ctm="--connect-timeout $(( $curlTimeout * 1))"
+for url in $(curl $ctm $baseurl 2>/dev/null | sed -n 's|.*\(http://www.nomachine.com/download-package.php?Prod_Id=[0-9]*\).*|\1|p' | sort -u) ; do
+	curl $ctm $url 2>/dev/null | sed -n "s|<A HREF|\n&|gp" | sed -n "s|<A HREF=.\(http.*$arch\.$1\).*|\1|p" | sort -u
+done
+}
+
+# patching /usr/NX/etc/node.cfg and /usr/NX/etc/server.cfg
+function patchcfg {
+	cfg=$nxetc/$1.cfg
+	[ ! -f $cfg -a -f $nxetc/$1-$tpl ] && cp $nxetc/$1-$tpl $cfg 
+	[ -f $cfg ] || return
+	[ -f ${cfg}.orig ] && return
+	printf  "\033[32;1m - writing %s\n\033[37;0m" $cfg
+	cp $cfg{,.orig}
+	case $1 in
+	server) cat << EOFNXSERVER | sed -i -f - $cfg
+s|#ServerName = .*|ServerName = "$(hostname -f)"|
+s|#DisplayBase = .*|DisplayBase = "$NXDisplayBase"|
+s|#EnableAdministratorLogin = "0"|EnableAdministratorLogin = "1"|
+s|#EnableClipboard = .*|EnableClipboard = "both"|
+s|#EnableDirectXdmQuery = "0"|EnableDirectXdmQuery = "1"|
+s|#CommandSessreg = "/usr/X11R6/bin/sessreg"|CommandSessreg = "$(which sessreg 2>/dev/null)"|
+s|#SSHDCheckIP = "0"|SSHDCheckIP = "1"|
+EOFNXSERVER
+	;;
+	node) cat << EOFNXNODE | sed -i -f - $cfg
+s|#NodeName = .*|NodeName =  "$(hostname -f)"|
+s|#CommandStartCDE = "cdwm"|CommandStartCDE = "startlxde"|
+s|#XkbCompKeymapFile = "/etc/X11/xkb/keymap/xfree86"|XkbCompKeymapFile = "/usr/share/X11/xkb/keymap/xfree86"|
+s|#DefaultXSession =.*|DefaultXSession = "$xdmSession"|
+s|#DefaultXDPI = .*|DefaultXDPI = "96"|
+#s|CUPSBinPath = ""|CUPSBinPath = "`dirname $(which lpoptions 2>/dev/null) 2>/dev/null`"|
+#s|CUPSSbinPath = ""|CUPSSbinPath = "`dirname $(which lpadmin 2>/dev/null) 2>/dev/null`"|
+#s|EnableCUPSSupport = "0"|EnableCUPSSupport = "1"|
+#s|#AgentExtraOptions = .*|AgentExtraOptions = "-nocomposite -noshpix" -fp "\`awk 'BEGIN { ORS=","} ; /FontPath/ { gsub(/"/,"",\$2) ; print \$2 }' /etc/X11/xorg.conf\`"|
+s|#SSHDCheckIP = "0"|SSHDCheckIP = "1"|
+s|CommandStartGnome =.*|CommandStartGnome = "$gnomeStartCmd"|
+s|CommandStartKDE =.*|CommandStartKDE = "$kdeStartCmd"|
+EOFNXNODE
+	;;
+	esac
+}
+
+
+# patching /etc/nxserver/node.conf
+function patchFreeNXnode {
+p=$1
+nxloadconfig=$(which nxloadconfig 2>/dev/null)
+[ "$nxloadconfig" ] && eval $(grep '^NX_ETC_DIR' $nxloadconfig) || NX_ETC_DIR=$freenxetcdir
+nodecfg=$NX_ETC_DIR/node.conf
+if [ -f $nodecfg ] ; then
+	printf  "\033[32;1m - patching %s\n\033[37;0m" $nodecfg
+	cp $nodecfg{,.nomachine}
+	cat << EOFFREENXNODE | sed -i -f - $nodecfg
+s|#ENABLE_NOMACHINE_FORWARD_PORT="0"|ENABLE_NOMACHINE_FORWARD_PORT="1"|
+s|^#*NOMACHINE_FORWARD_PORT=.*|NOMACHINE_FORWARD_PORT="$p"|
+s|#NOMACHINE_SERVER=.*|NOMACHINE_SERVER="$nxbin/nxserver"|
+s|#NOMACHINE_NX_HOME_DIR=.*|NOMACHINE_NX_HOME_DIR="$nmhome"|
+EOFFREENXNODE
+fi
+}
+
+function allowAuthorizeKeysFile2 {
+	[ "x$AuthorizeKeysFile2" == "xyes" ] || return
+	grep -q '^AuthorizedKeysFile' /etc/ssh/sshd_config || return
+	printf "\033[32;1m - allowing AuthorizeKeysFile2 back%s\033[37;0m\n"
+	cp /etc/ssh/sshd_config{,.dist}
+	sed -i 's|^\(AuthorizedKeysFile\)|#\1|' /etc/ssh/sshd_config
+}
+
+function openport {
+# openSUSE only!
+p=$1
+# This method works too, but I prefere the second one
+#if ( ! grep -q "FW_SERVICES_EXT_TCP=.*$p" /etc/sysconfig/SuSEfirewall2) ; then
+#	echo "- opening SSH port $p"
+#	sed -i "s|\(FW_SERVICES_EXT_TCP=\".*\)\"|\1 $p\"|;s|\" |\"|" /etc/sysconfig/SuSEfirewall2		
+#	/sbin/SuSEfirewall2 start
+#fi 
+
+if ( ! grep -q " $p" /etc/sysconfig/SuSEfirewall2.d/services/sshd ) ; then
+	printf "\033[32;1m - opening SSH port %s\033[37;0m\n" $p
+	sed -i "s|\(TCP=\".*\)\"|\1 $p\"|;s|\" |\"|" /etc/sysconfig/SuSEfirewall2.d/services/sshd		
+	/sbin/SuSEfirewall2 start
+fi 
+}
+
+function setnxport {
+p=$(($1*1))
+[ $p -eq 0 ] && exec echo "invalid SSH port"
+[ $p -eq 22 ] && return
+if ( ! grep -q "^Port  *$p" /etc/ssh/sshd_config ) ; then
+	printf "\033[32;1m - enabling SSH port %s\033[37;0m\n" $p
+	sed -i -e "s/^#Port 22/Port 22/" -e "/^Port 22/ a\
+Port $p" /etc/ssh/sshd_config 
+case $os in
+ubuntu|linuxmint) restart ssh ;;
+fedora|mandrivalinux) service sshd restart ;;
+archlinux) /etc/init.d/sshd restart ;;
+suselinux)
+	service sshd restart
+	/sbin/SuSEfirewall2 status &>/dev/null && openport $1
+;;
+esac
+fi
+for nxcfg in $nxetc/{node,server}.cfg ; do
+	if [ -f $nxcfg ] ; then 
+		if ( ! grep -q "SSHDPort.*$p" $nxcfg ) ; then
+			printf "\033[32;1m - setting SSH port %s in %s\033[37;0m\n" $p $nxcfg
+			sed -i "s|#*SSHDPort = .*|SSHDPort = \"$p\"|" $nxcfg
+		fi
+	fi
+done 
+[ "$FREENX" ] && patchFreeNXnode $p
+}
+
+function nxVer {
+pbin=$1
+if [ -f $nxbin/$pbin ] ; then
+	$nxbin/$pbin --version | sed -n 's|.*Version \([^ ]*\).*|\1|p'
+else
+	echo 0
+fi
+}
+
+function download { 
+	[ "$1" ] || exec printf "\033[31;1mdownload: missing argument\033[37;0m\n"
+	if [ -f $cachedir/$1 ] ; then
+		cp $cachedir/$1 $tmpdir
+	else
+		cd $tmpdir
+ 		[ "$2" ] && wget $2 || exec printf "\033[31;1mpackage %s not found\033[37;0m\n" $1
+		[ "$IS_SUSE" ] || cp $tmpdir/$1 $cachedir
+	fi
+}
+
+function stopfreenx {
+	if ( systemd-analyze time &>/dev/null ) then
+		if [ -f /lib/systemd/system/freenx-server.service ] ; then
+			systemctl disable freenx-server.service
+			systemctl stop freenx-server.service
+			systemctl status freenx-server.service
+		fi
+	else
+		if [ -f /etc/init.d/freenx-server ] ; then
+			/sbin/chkconfig freenx-server off
+			service freenx-server stop
+			service freenx-server status
+		fi
+	fi
+}
+
+function NXsessionClientMsg {
+cat << EOFNXMSG
+
+A session file for $(hostname -s) including the client key has been written in
+$nxdir/share/$(hostname -s).nxs. You may copy this file to your client ~/.nx/config
+directory and change this session settings in Nomachine client to suit your
+needs.
+EOFNXMSG
+}
+
+function createNXsession {
+printf "\033[32;1m - writing nx session file %s.nxs\033[37;0m\n" $(hostname -s)
+[ "$nxport" ] || nxport=$(awk -F "=" '/^SSHDPort/ { gsub(/[ "]/,"",$2) ; print $2 }' $nxdir/etc/server.cfg)
+[ "$nxport" ] && port=$(($nxport * 1)) || port=22
+cat > $nxdir/share/$(hostname -s).nxs << EOFNXSESSION && NXsessionClientMsg
+<!DOCTYPE NXClientSettings>
+<NXClientSettings application="nxclient" version="1.3" >
+<group name="Advanced" >
+<option key="Cache size" value="16" />
+<option key="Cache size on disk" value="64" />
+<option key="Current keyboard" value="true" />
+<option key="Custom keyboard layout" value="" />
+<option key="Disable DirectDraw" value="false" />
+<option key="Disable ZLIB stream compression" value="false" />
+<option key="Disable deferred updates" value="false" />
+<option key="Enable HTTP proxy" value="false" />
+<option key="Enable SSL encryption" value="true" />
+<option key="Enable response time optimisations" value="false" />
+<option key="Grab keyboard" value="false" />
+<option key="HTTP proxy host" value="" />
+<option key="HTTP proxy port" value="8080" />
+<option key="HTTP proxy username" value="" />
+<option key="Remember HTTP proxy password" value="false" />
+<option key="Restore cache" value="true" />
+<option key="StreamCompression" value="" />
+</group>
+<group name="Environment" >
+<option key="CUPSD path" value="/usr/sbin/cupsd" />
+</group>
+<group name="General" >
+<option key="Automatic reconnect" value="true" />
+<option key="Command line" value="" />
+<option key="Custom Unix Desktop" value="console" />
+<option key="Desktop" value="xdm" />
+<option key="Disable SHM" value="false" />
+<option key="Disable emulate shared pixmaps" value="false" />
+<option key="Link speed" value="lan" />
+<option key="Remember password" value="false" />
+<option key="Resolution" value="${SWidth}x${SHeight}" />
+<option key="Resolution height" value="$SHeight" />
+<option key="Resolution width" value="$SWidth" />
+<option key="Server host" value="$(hostname -f)" />
+<option key="Server port" value="$port" />
+<option key="Session" value="unix" />
+<option key="Spread over monitors" value="false" />
+<option key="Use default image encoding" value="0" />
+<option key="Use render" value="true" />
+<option key="Use taint" value="true" />
+<option key="Virtual desktop" value="false" />
+<option key="XAgent encoding" value="true" />
+<option key="displaySaveOnExit" value="true" />
+<option key="xdm broadcast port" value="177" />
+<option key="xdm list host" value="$(hostname -f)" />
+<option key="xdm list port" value="177" />
+<option key="xdm mode" value="query" />
+<option key="xdm query host" value="$(hostname -f)" />
+<option key="xdm query port" value="177" />
+</group>
+<group name="Images" >
+<option key="Disable JPEG Compression" value="0" />
+<option key="Disable all image optimisations" value="false" />
+<option key="Disable backingstore" value="false" />
+<option key="Disable composite" value="false" />
+<option key="Image Compression Type" value="3" />
+<option key="Image Encoding Type" value="0" />
+<option key="Image JPEG Encoding" value="false" />
+<option key="JPEG Quality" value="6" />
+<option key="RDP Image Encoding" value="3" />
+<option key="RDP JPEG Quality" value="6" />
+<option key="RDP optimization for low-bandwidth link" value="false" />
+<option key="Reduce colors to" value="" />
+<option key="Use PNG Compression" value="true" />
+<option key="VNC JPEG Quality" value="6" />
+<option key="VNC images compression" value="3" />
+</group>
+<group name="Login" >
+<option key="Auth" value="EMPTY_PASSWORD" />
+<option key="Guest Mode" value="false" />
+<option key="Guest password" value="" />
+<option key="Guest username" value="" />
+<option key="Login Method" value="nx" />
+<option key="Public Key" value="`cat $skey`
+" />
+<option key="User" value="" />
+</group>
+<group name="Services" >
+<option key="Audio" value="false" />
+<option key="IPPPort" value="631" />
+<option key="IPPPrinting" value="false" />
+<option key="Shares" value="false" />
+</group>
+<group name="VNC Session" >
+<option key="Display" value="0" />
+<option key="Remember" value="false" />
+<option key="Server" value="" />
+</group>
+<group name="Windows Session" >
+<option key="Application" value="" />
+<option key="Authentication" value="2" />
+<option key="Color Depth" value="8" />
+<option key="Domain" value="" />
+<option key="Image Cache" value="true" />
+<option key="Password" value="EMPTY_PASSWORD" />
+<option key="Remember" value="true" />
+<option key="Run application" value="false" />
+<option key="Server" value="" />
+<option key="User" value="" />
+</group>
+<group name="share chosen" >
+<option key="Share number" value="0" />
+</group>
+</NXClientSettings>
+EOFNXSESSION
+}
+
+
+function createDSAKeys {
+	nxsetup=$nxdir/scripts/setup/nxserver
+	if [ -x $nxsetup ] ; then
+		printf "\033[32;1m - creating DSA key pair\033[37;0m\n"
+		$nxsetup --keygen
+		chown nx:root $nmhome/.ssh/{authorized_keys2,default.id_dsa.pub}
+		chmod 0644 $nmhome/.ssh/{authorized_keys2,default.id_dsa.pub}
+        [ -f $skey ] && createNXsession			
+	else
+		printf "\033[31;1m%s not found. DSA keys not created.\033[37;0m\n" $nxsetup
+	fi
+	unset DSAKEY
+}
+
+args=`getopt -q -u -o hscnkdqop: -l help,server,client,nofreenx,keys,deinstall,quick,offline,port: -- "$@"`
+
+set -- $args
+
+for i; do
+	case "$i" in
+	-h|--help) syntax ;;
+	-p|--port)  shift ; nxport=$1 ; shift ;;
+	-s|--server) SERVER=yes ; shift ;;
+	-c|--client) CLIENT=yes ; shift ;;
+	-n|--nofreenx) NOFREENX=yes ; shift ;;
+	-k|--keys) DSAKEY=yes ; shift ;;
+	-q|--quick) NOUPDATE=yes ; shift ;;
+	-o|--offline) NOURL=yes ; shift ;;
+    -d|--deinstall) DEINSTALL=yes ; NOURL=yes ; shift ;;
+	esac
+done
+
+shift
+
+if ( which lsb_release &>/dev/null ) ; then 
+	os=$(lsb_release -si | tr -d " ")
+elif [ -f /etc/SuSE-release ] ; then
+	os="suselinux"
+elif [ -f /etc/arch-release ] ; then
+	os="archlinux"
+elif [ -f /etc/fedora-release ] ; then
+	os="fedora"
+elif [ -f /etc/mandriva-release ] ; then
+	os="mandrivalinux"
+elif [ -d /etc/linuxmint ] ; then
+	os="linuxmint"
+else
+	os="unknown"
+fi
+
+pkg=${os}_pkg ; pkg=${!pkg} ; pkg=${pkg:-$Pkg}
+upd=${os}_upd ; upd=${!upd} ; upd=${upd:-$Upd}
+ins=${os}_ins ; ins=${!ins} ; ins=${ins:-$Ins}
+del=${os}_del ; del=${!del} ; del=${del:-$Del}
+tpl=${os}_tpl ; tpl=${!tpl} ; tpl=${tpl:-$Tpl} ; tpl="${tpl}.cfg.sample"
+dir=${os}_dir ; dir=${!dir} ; dir=${dir:-$tmpdir}
+
+case $os in
+suselinux)        IS_SUSE=1 ;;
+fedora)           IS_FEDORA=1 ;;
+mandrivalinux)    IS_MANDRIVA=1 ;;
+archlinux)        IS_ARCHLINUX=1 ;;
+ubuntu|linuxmint) IS_UBUNTU=1 ; arch=${arch/x86_/amd} ;;
+*)         exec  printf "\033[31;1m%s not supported yet.\033[37;0m\n"
+esac
+
+cachedir=$dir
+
+if [ "$NOUPDATE" ] ; then
+	[ "x$AuthorizeKeysFile2" == "xyes" ] && allowAuthorizeKeysFile2
+	[ "$DSAKEY" ] && createDSAKeys
+	[ "$nxport" ] && setnxport $nxport
+	exit
+fi
+
+[ "x$SERVER" == "x" -a "x$CLIENT" == "x" ] && SERVER=yes
+[ "$SERVER" == "yes" ] && CLIENT=yes
+
+[ "$cachedir" == "/var/cache/yum" ] && cachedir="${cachedir}/$(uname -m)/$(lsb_release -rs)/updates/packages" 
+[ -d $cachedir ] || cachedir=$tmpdir
+
+if ( id nx &>/dev/null ) ; then
+	eval $(awk -F ":" '$1 == "nx" { printf "nxid=%s;nxgid=%s;nxct=\"%s\";nxhome=%s;nxsh=%s;", $3, $4, $5, $6, $7 }' /etc/passwd)
+	echo $nxct | grep -i -q freenx && FREENX=YES
+	echo $nxhome | grep -q "/var/lib/nxserver" && FREENX=YES
+	[ "$FREENX" == "NO" ] && unset FREENX
+	[ "$NOFREENX" ] && unset FREENX
+else
+	unset FREENX
+fi
+
+[ "$DEINSTALL" ] && deinstall_nx
+
+if [ "x$NOURL" == "x" ] ; then 
+	printf "\033[32;1mPlease wait while searching download urls...\033[37;0m\n"
+	case $pkg in
+		rpm)    eval `geturls rpm    | tr " " "\n" | awk -F "/" '{ NAME=$NF ; VER=$NF; sub(/\-.*/,"",NAME); sub(/[^-]*-/,"",VER) ; sub(/\.[^.]*.rpm/,"",VER) ; MAJ=VER; MIN=VER; sub(/\-.*/,"",MAJ) ;  gsub(/\./,"",MAJ) ; sub(/.*\-/,"",MIN) ; printf "%s_pkg=\"%s\"; %s_ver=\"%s\"; %s_url=\"%s\";%s_maj=%s; %s_min=%s\n", NAME, $NF, NAME, VER, NAME, $0, NAME, MAJ, NAME, MIN }'` ;;
+		deb)    eval `geturls deb    | tr " " "\n" | awk -F "/" '{ NAME=$NF ; VER=$NF; sub(/\_.*/,"",NAME); sub(/[^_]*_/,"",VER) ; sub(/_.*/,"",VER) ;  MAJ=VER; MIN=VER; sub(/\-.*/,"",MAJ) ;  gsub(/\./,"",MAJ) ; sub(/.*\-/,"",MIN) ; printf "%s_pkg=\"%s\"; %s_ver=\"%s\"; %s_url=\"%s\";%s_maj=%s; %s_min=%s\n", NAME, $NF, NAME, VER, NAME, $0, NAME, MAJ, NAME, MIN }'` ;;
+		tar.gz) eval `geturls tar.gz | tr " " "\n" | awk -F "/" '{ NAME=$NF ; VER=$NF; sub(/\-.*/,"",NAME); sub(/[^-]*-/,"",VER) ; sub(/\.[^.]*.tar.gz/,"",VER) ; MAJ=VER; MIN=VER; sub(/\-.*/,"",MAJ) ;  gsub(/\./,"",MAJ) ; sub(/.*\-/,"",MIN) ; printf "%s_pkg=\"%s\"; %s_ver=\"%s\"; %s_url=\"%s\";%s_maj=%s; %s_min=%s\n", NAME, $NF, NAME, VER, NAME, $0, NAME, MAJ, NAME, MIN }'` ;;
+	esac
+fi
+
+for nxpkg in nxserver nxnode nxclient ; do
+	pkg_name=${nxpkg}_pkg ; pkg_name=${!pkg_name}
+	pkg_ver=${nxpkg}_ver  ; pkg_ver=${!pkg_ver}
+	[ "$pkg_name" ] && continue
+	eval "${nxpkg}_pkg=$(find -L $cachedir -name "${nxpkg}[-_]*$pkg" -exec basename "{}" ";" | sort -Vr | head -1)"
+	pkg_name=${nxpkg}_pkg ; pkg_name=${!pkg_name}
+	case $pkg in
+		rpm) ver=${pkg_name#*-}; eval "${nxpkg}_ver=${ver%%.[xi]*}" ;;
+		deb) ver=${pkg_name#*_}; eval "${nxpkg}_ver=${ver%_*}" ;;
+		*)   ver=${pkg_name#*-}; eval "${nxpkg}_ver=${ver%%.[xi]*}" ;;
+	esac
+	pkg_ver=${nxpkg}_ver  ; pkg_ver=${!pkg_ver}
+	pkg_cache="$pkg_cache $pkg_name"
+	USECACHE=yes	
+done
+pkg_cache=$(echo $pkg_cache | sed 's|^ *\(.*\) *$|\1|')
+
+
+if [ "$USECACHE" ] ; then
+	[ "$NOURL" ] || printf "\033[31;1mNomachine download site doesn't respond yet. Try later.\033[37;0m\n"
+	if [ "$pkg_cache" ] ; then
+		printf "\033[32;1mThe following packages were found in %s cache:\n%s\033[37;0m\n" $pkg "$pkg_cache"
+	else
+		exec printf "\033[31;1mNo packages found in %s cache. NoMachine can not be installed.\033[37;0\n" $pkg
+	fi
+fi
+
+client2ins="" ; client2upd=""
+server2ins="" ; server2upd=""
+
+if [ "$CLIENT" ] ; then
+	if [ "$SERVER" ] ; then
+		if [ "x$nxnode_pkg" == "x" -o "x$nxserver_pkg" == "x" ] ; then
+			exec printf "\n\033[31;1mNo nxnode and/or nxserver package available from NoMachine website or found in %s cache.\nYou might want to try running nomachine-setup later.\033[37;0m\n" $pkg 
+		fi
+		nxnodeVer=$(nxVer nxnode)
+		if [ "x$nxnodeVer" == "x$nxnode_ver" ] ; then
+			printf "\033[32;1mnxnode (%s) is up to date.\033[37;0m\n" $nxnodeVer
+		else
+			download $nxnode_pkg $nxnode_url			
+			if [ -f $tmpdir/$nxnode_pkg ] ; then
+				[ "$nxnodeVer" == "0" ] && server2ins="$server2ins $nxnode_pkg" || server2upd="$server2upd $nxnode_pkg"
+			else
+				printf "\033[32;1mpackage %s not found.\033[37;0m\n" $nxnode_pkg
+			fi
+		fi	 
+		nxserverVer=$(nxVer nxserver)
+		if [ "x$nxserverVer" == "x$nxserver_ver" ] ; then
+			printf "\033[32;1mnxserver (%s) is up to date.\033[37;0m\n" $nxserverVer
+		else
+			download $nxserver_pkg $nxserver_url			
+			if [ -f $tmpdir/$nxserver_pkg ] ; then
+				[ "$nxserverVer" == "0" ] && server2ins="$server2ins $nxserver_pkg" || server2upd="$server2upd $nxserver_pkg"
+			else
+				printf "\033[31;1mpackage %s not found.\033[37;0m\n" $nxserver_pkg
+			fi
+		fi	 
+	fi
+	if [ "$nxclient_pkg" ] ; then
+		nxclientVer=$(nxVer nxclient)
+		if [ "x$nxclientVer" == "x$nxclient_ver" ] ; then
+			printf "\033[32;1mnxclient (%s) is up to date.\033[37;0m\n" $nxclientVer
+		else
+			download $nxclient_pkg $nxclient_url			
+			if [ -f $tmpdir/$nxclient_pkg ] ; then
+				[ "$nxclientVer" == "0" ] && client2ins="$client2ins $nxclient_pkg" || client2upd="$client2upd $nxclient_pkg"
+			else
+				printf "\033[31;1mpackage %s not found.\033[37;0m\n" $nxclient_pkg
+			fi
+		fi	
+	else
+		printf "\n\033[31;1mNo nxclient package available from NoMachine website or found in %s cache.\nYou might want to try running nomachine-setup later.\033[31;1m\n" $pkg
+	fi
+fi
+
+pkg2ins="$client2ins $server2ins" ; pkg2ins=$(echo $pkg2ins | sed 's|^ *\(.*\) *$|\1|')
+pkg2upd="$client2upd $server2upd" ; pkg2upd=$(echo $pkg2upd | sed 's|^ *\(.*\) *$|\1|')
+
+if [ "$server2ins" ] ; then
+	printf "\033[32;1m - installing NoMachine NX server and client...\033[37;0m\n"
+	if ( id nx &>/dev/null ) ; then
+		[ "$NOFREENX" ] && stopfreenx
+		userdel nx
+	fi
+	if [ "$pkg" == "tar.gz" ] ; then
+		for p in $pkg2ins ; do
+			[ -f $cachedir/$p ] && tar -C /usr -xvzf $cachedir/$p || exec printf "\033[31;1m package %s not found!. Script aborted.\033[37;0m\n" $p
+			setup=$nxdir/scripts/setup/${p%%-*}	
+			[ -f $setup ] && $setup --install $archlinux_tpl
+		done
+	else
+		cd $tmpdir && $ins $pkg2ins
+	fi
+	patchcfg server
+	patchcfg node
+	[ "$DSAKEY" ] && createDSAKeys
+	if [ "$FREENX" ] ; then
+		printf "\033[32;1m - FreeNX found...\033[37;0m\n"
+		nxport=${nxport:-NXPort}
+		nmid=$(id -u nx 2>/dev/null)
+		nmgid=$(id -g nx 2>/dev/null)
+		if [ "x$nmgid" != "x$nxgid" ] ; then	
+			groupmod nx &>/dev/null && groupmod -g $nxgid nx || groupadd -g $nxgid nx 
+		fi
+		printf "\033[32;1m - using UID %s and GID %s\033[37;0m\n" $nxid $nxgid
+		if [ "x$nmid" != "x$nxid" ] ; then
+			find $nxdir -user nx -exec chown $nxid "{}" ";"
+			find /var/log -name "nxserver.log" -exec chown $nxid "{}" ";"
+		fi
+		usermod -u $nxid -g $nxgid -d $nxhome -s $nxsh nx
+		[ "$nxct" ] && usermod -c "$nxct" nx
+	fi
+elif [ "$client2ins" ] ; then
+	printf "\033[32;1m - installing NoMachine NX client...\033[37;0m\n" 
+	if [ "$pkg" == "tar.gz" ] ; then
+		for p in $client2ins ; do
+			[ -f $cachedir/$p ] && tar -C /usr -xvzf $cachedir/$p || exec printf "\033[31;1m package %s not found!. Script aborted.\033[37;0m\n" $p
+			setup=$nxdir/scripts/setup/${p%%-*}	
+			$setup --install $archlinux_tpl
+		done
+	else
+		cd $tmpdir && $ins $client2ins
+	fi
+	[ -x /usr/bin/nxclient ] || [ -x $nxbin/nxclient ] && ln -s $nxbin/nxclient /usr/bin/nxclient
+fi
+
+if [ "$pkg2upd" ] ; then
+	if [ "$client2upd" -a "$server2upd" ] ; then
+		whatnx="client and server"
+	elif [ "$client2upd" ] ; then
+		whatnx="client"
+	elif [ "$server2upd" ] ; then
+		whatnx="server"
+	fi
+	printf "\033[32;1m - updating NoMachine NX %s...\033[37;0m\n" "$whatnx"
+	if [ "$pkg" == "tar.gz" ] ; then
+		for p in $pkg2upd ; do
+			[ -f $cachedir/$p ] && tar -C /usr -xvzf $cachedir/$p || exec printf "\033[31;1m package %s not found!. Script aborted.\033[37;0m\n" $p
+			setup=$nxdir/scripts/setup/${p%%-*}	
+			$setup --update $archlinux_tpl
+		done
+	else
+		cd $tmpdir && $upd $pkg2upd
+	fi
+fi
+
+[ "$DSAKEY" ] && createDSAKeys
+[ "$nxport" ] && setnxport $nxport
+
+exit 0

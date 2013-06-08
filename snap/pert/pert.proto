@@ -1,0 +1,98 @@
+//Needed to support self-describing proto
+import "google/protobuf/descriptor.proto";
+
+package pert;
+
+message Key {
+  required bytes data = 1;
+}
+
+
+//This is a fixed size message...
+message CompressedBlockHeader {
+  required fixed64 block_magic = 1;
+  required fixed64 uncompressed_size = 2;
+}
+
+message DiskBlockLocation {
+  required fixed64 offset = 1;  // position relative to start of file in bytes
+  required fixed64 size = 2;  // size of block in bytes
+}
+
+message DataIndexRecord {
+  required fixed64 offset = 1; // disk position of start of DataBlock
+  required fixed64 size = 2; // disk size of DataBlock
+  optional Key last_key = 3; // a copy of the last key in this block (required if file is sorted to allow seek by key)
+  required fixed64 initial_entry_index = 4; // the index of the first entry in the block (required so we can seek to an index or compute our progress through the input split range without iterating to count the entries in all earlier blocks)
+}
+
+message MetadataIndexRecord {
+  required string name = 1; // name of metadata block
+  required fixed64 offset = 2; // disk position of start of CompressedBlockHeader
+  required fixed64 size = 3; // disk size of DataBlock
+}
+
+
+// Loaded on open.
+message DataIndex {
+  repeated DataIndexRecord blocks = 1;
+}
+
+// Loaded on open.
+message MetadataIndex {
+  repeated MetadataIndexRecord blocks = 2;
+}
+
+message OrderedKeyInfo {
+  required string comparator = 1; // if populated, file is sorted by keys using this method
+  optional Key first_key = 2; // uncompressed copy of first key in this file
+  optional Key last_key = 3; // uncompressed copy of the last key in this file
+}
+
+message Stats {
+  required fixed64 min_length = 1;
+  required fixed64 max_length = 2;
+  required fixed64 avg_length = 3;
+}
+
+// Loaded on open.
+message FileInfo {
+  required uint64 num_entries = 1; // total number of entries in this file
+  optional string compression_codec = 2; // if populated, specifies the compression codec used for Compressed Data Blocks... otherwise no compression is used.
+  required double compression_ratio = 3; // uncompressed / compressed size
+  optional OrderedKeyInfo ordered_key_info = 4; // if populated, specifies how keys are sorted
+  optional string fingerprint = 5;  // md5sum of all but a little bit of the end of the file (up to point where file info block is written to disk) -- can be used to efficiently compare file contents for data provenance tasks, etc...
+  //optional Stats key_stats = 4;
+  //optional Stats value_stats = 5;
+}
+
+// This message must have a fixed size (no variable length fields)
+// because we need to know where it starts relative to end of file.
+// Loaded on open.
+message Tail {
+  required DiskBlockLocation data_index_location = 1;
+  required DiskBlockLocation metadata_index_location = 2;
+  required DiskBlockLocation file_info_location = 3;
+  required fixed64 file_version = 4;
+  required fixed64 file_magic = 5;
+}
+
+// Represents a protocol file and its recursive dependency chain
+message ProtoFileTree {
+  required google.protobuf.FileDescriptorProto file = 1;  
+  repeated ProtoFileTree deps = 2;
+}
+
+message ProtoFormat {
+  // Proto message definition
+  required ProtoFileTree file_tree = 1;
+  required string name = 2;  
+}
+
+message BloomFilterData {
+	//required fixed64 target_capacity = 1;
+	//required double target_error_rate = 2;
+	required double num_entries = 1;
+	required uint32 num_bits = 2;
+	repeated fixed64 filter_state = 3;
+}

@@ -1,0 +1,117 @@
+pyglog v1.2
+riesa@isi.edu (Jason Riesa)
+http://www.isi.edu/~riesa/software/pyglog
+
+This Python module implements some basic functionality from the
+Google glog C++ libraries (http://code.google.com/p/google-glog/).
+
+To Install:
+$ python setup.py install
+
+To get started, use:
+  from pyglog import *
+  InitLogging()
+
+Using the Logger
+================
+  I. LOG statements:
+  The logger LOG takes two arguments, a log level code and a string message.
+  The most common log level codes are INFO and FATAL:
+    Use INFO to print a single message to stderr with timestamp and line number.
+    Use FATAL to also print a stack trace and abort execution.
+
+  EXAMPLE:
+  LOG(INFO, "This is a logging message.")
+  LOG(FATAL, "I am going to dump a trace and then kill your program.")
+
+  Logging messages look like this:
+  I102611 17:04:34.476116 47180  test_log.py:12] This is a logging message.
+ 
+  The format is: 
+  [type][date] [time] [pid] [module:line_number]] Message
+  type is one of I or F, for INFO or FATAL, respectively.
+  date is the current date in mmddyy format.
+  time is the current time with hours:mins:seconds.milliseconds
+  pid is the current process id
+  module is the module name where this LOG statement was executed
+  line_number is the line number at which this LOG statement was found
+
+  II. CHECK statements:
+  Instead of assert() expressions, you can use CHECK statements
+  to validate an expression to be true before continuing execution.
+  There are several flavors of CHECK statements:
+    CHECK_EQ(obj1, obj2, message) # Check obj1 == obj2
+    CHECK_NE(obj1, obj2, message) # Check obj1 != obj2
+    CHECK_LT(obj1, obj2, message) # Check obj1 < obj2
+    CHECK_GT(obj1, obj2, message) # Check obj1 > obj2
+    CHECK_LE(obj1, obj2, message) # Check obj1 <= obj2
+    CHECK_GE(obj1, obj2, message) # Check obj1 >= obj2
+    CHECK_NOTNONE(obj, message) # Check obj1 is not None
+  If the check fails, it is equivalent to executing a LOG(FATAL, message).
+  There is no output if the check passes. Program execution continues normally.
+
+  III. Higher level codes:
+  In conjunction with SetLogLevel(level), you may wish to use
+  higher level logging codes. Use SetLogLevel to only execute logging
+  commands with level codes higher than a given level.
+  Note:
+    INFO logs are executed at level 1.
+    FATAL logs are executed with -1.
+    FATAL logs are never ignored.
+
+  EXAMPLE:
+  SetLogLevel(2)
+  LOG(INFO, "Here is a logging message, but I won't execute.")
+  LOG(2, "Here is a deeper logging message")
+
+  In a future release, the log level can be set via a commandline flag.
+
+  IV. Turning logs on and off:
+  Use SetLogsOff() to turn logging off. All LOG and CHECK commands are ignored.
+  Use SetLogsOn(level) to turn logging on.
+  You can use SetLogsOn() to turn logging on at default level 1.
+
+
+Code Example
+=============
+
+Below is a longer code example that demonstrates INFO, FATAL, and CHECK usage.
+
+== test_log.py ==
+[1]  from pyglog import *
+[2]  import sys
+[3]
+[4]  def CountTrees():
+[5]    if len(sys.argv) < 2:
+[6]      LOG(FATAL, "Could not count any trees.")
+[7]    return int(sys.argv[1])
+[8]
+[9]  def Chop(trees=0):
+[10]    while(trees > 0):
+[11]      trees -= 1
+[12]      LOG(INFO, "Just cut down a tree.")
+[13]    return trees
+[14]
+[15]  def Lumberjack():
+[16]    trees = CountTrees()
+[17]    current_trees = Chop(trees)
+[18]    LOG(INFO, "Finished cutting down trees.")
+[19]    CHECK_GT(current_trees, 0, "No trees left. End of the world!")
+[20]
+[21]  if __name__ == "__main__":
+[22]    InitLogging()
+[23]    Lumberjack()
+
+Output:
+$ python test_log.py 3
+I1026 17:04:34.476116 47180  test_log.py:12] Just cut down a tree.
+I1026 17:04:34.476363 47180  test_log.py:12] Just cut down a tree.
+I1026 17:04:34.476706 47180  test_log.py:12] Just cut down a tree.
+I1026 17:04:34.477369 47180  test_log.py:18] Finished cutting down trees.
+F1026 17:04:34.477917 47180  test_log.py:19] No trees left. End of the world!
+Stack trace:
+    @    test.py::<module>:23  Lumberjack()
+    @    test.py::Lumberjack:19  CHECK_GT(current_trees, 0, "No trees left. End of the world!")
+    @    pyglog.py::CHECK_GT:108 LOG(FATAL, msg, isCheck=True)
+    @    pyglog.py::LOG:69 PrintStackTrace(traceback.extract_stack())
+Aborted

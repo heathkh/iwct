@@ -1,0 +1,10 @@
+Metadata-Version: 1.0
+Name: pyglog
+Version: 1.1
+Summary: A logging facility for Python based on google-glog
+Home-page: http://www.isi.edu/~riesa/software/pyglog
+Author: Jason Riesa
+Author-email: riesa@isi.edu
+License: GPL
+Description: UNKNOWN
+Platform: UNKNOWN

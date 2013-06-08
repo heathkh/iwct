@@ -1,0 +1,29 @@
+package deluge;
+
+
+message MaprDistributedCacheJob {
+  required string name = 1;
+  repeated string uris = 2;
+  message Rack {
+    required string topology = 1;
+    repeated string member_ips = 2;
+  }
+  repeated Rack racks = 3;
+}
+
+
+message ResourceProvenance {
+  required string fingerprint = 1;
+  required string flow = 2; // name of the flow that generated this resource
+  required string name = 3; // name of this resource given by the generating flow
+  required string uri = 4; // uri where this resource was initially generated
+  required double start_time_sec = 5; // Time in sec since epoch when the generating flow started
+  required double end_time_sec = 6; // Time in sec since epoch when the generating flow completed
+  repeated string input_fingerprints = 7; // list of fingerprints of all input resources required by generating flow
+}
+
+// A node for a tree structure of ResourceProvenance
+message ResourceProvenanceTree {
+  required ResourceProvenance resource = 1;
+  repeated ResourceProvenanceTree inputs = 2;
+}

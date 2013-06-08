@@ -1,0 +1,19 @@
+- name: Add mapr repo
+  apt_repository: repo="deb http://package.mapr.com/releases/$mapr_version/ubuntu mapr optional"
+  
+- name: Add mapr ecosystem repo
+  apt_repository: repo="deb http://package.mapr.com/releases/ecosystem/ubuntu binary/"  
+  
+- name: Fix bug in apt tool that adds non-existant src package without asking
+  lineinfile: dest=/etc/apt/sources.list state=absent regexp="$item"
+  with_items:
+    - "^deb-src http://package.mapr.com/releases/$mapr_version/ubuntu mapr optional"  
+    - "^deb-src http://package.mapr.com/releases/ecosystem/ubuntu binary/"
+   
+- name: Install mapr client
+  apt: pkg=mapr-client update_cache=yes state=present force=yes
+  #note: force required because don't seem to have mapr's repo key installed
+  #note: Must NOT install ANY other mapr-* packages on client machine... They will disable the client package!
+  
+- name: Install nfs client
+  apt: pkg=nfs-common  

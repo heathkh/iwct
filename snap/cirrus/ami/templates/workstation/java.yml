@@ -1,0 +1,16 @@
+- name: Add java repo
+  apt_repository: repo=ppa:webupd8team/java
+
+- name: Pre-confirm license so the installer won't halt and ask for it
+  command: echo debconf shared/accepted-oracle-license-v1-1 select true | sudo debconf-set-selections
+
+- name: Pre-confirm license so the installer won't halt and ask for it    
+  command: echo debconf shared/accepted-oracle-license-v1-1 seen true | sudo debconf-set-selections
+
+- name: Install latest java
+  apt: pkg=oracle-java7-installer update_cache=yes
+  
+- name: Set alternative system to use latest java
+  command: sudo update-java-alternatives -s java-7-oracle
+
+

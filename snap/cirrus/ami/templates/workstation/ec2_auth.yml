@@ -1,0 +1,10 @@
+---
+- name: Create ec2 auth files dir
+  file: dest=/home/ubuntu/.ec2/ state=directory owner=ubuntu group=ubuntu
+
+- name: Install ec2 auth files from the local ~/.ec2
+  copy: src=$ENV(HOME)/.ec2/$item  dest=/home/ubuntu/.ec2/$item owner=ubuntu group=ubuntu mode=600
+  with_items:
+     - west_kp1.pem
+     
+  

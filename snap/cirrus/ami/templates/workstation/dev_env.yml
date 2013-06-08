@@ -1,0 +1,45 @@
+- name: Install dev packages 
+  apt: pkg=$item update_cache=yes
+  with_items:
+     - clang
+     - cmake
+     - cmake-qt-gui
+     - cmake-curses-gui
+     - swig
+     - nautilus-open-terminal
+     - chromium-browser  
+     - libssl-dev
+     - python-dev
+     - libunwind7-dev
+     - python-matplotlib
+     - pychecker    
+     - python-progressbar
+     - python-jinja2
+     - python-networkx
+     - python-pip
+     
+- name: Install required packages from pip
+  pip: name=$item
+  with_items:
+     - requests
+
+- name: Remove conflicting package versions that got auto-installed  
+  apt: pkg=$item state=absent
+  with_items:     
+     - python-protobuf
+     - protobuf-compiler
+     - libprotoc7 
+     
+- name: Configure default environment
+  copy: src=bashrc dest=/home/ubuntu/.bashrc owner=ubuntu group=ubuntu
+  
+# Tweaks to default limits: http://www.ubun2.com/question/433/how_set_ulimit_ubuntu_linux_getting_sudo_ulimit_command_not_found_error  
+- name: Fix the soft file limit for user ubuntu
+  lineinfile: dest=/etc/security/limits.conf regexp="^ubuntu soft nofile 64000" line="ubuntu soft nofile 64000"
+
+- name: Fix the hard file limit for user ubuntu
+  lineinfile: dest=/etc/security/limits.conf regexp="^ubuntu hard nofile 64000" line="ubuntu hard nofile 64000"  
+  
+- name: Turn on pam limits so above changes take effect
+  lineinfile: dest=/etc/pam.d/common-session regexp="^session required pam_limits.so" line="session required pam_limits.so"
+   

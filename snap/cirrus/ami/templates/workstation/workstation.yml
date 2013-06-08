@@ -1,0 +1,13 @@
+---
+- hosts: all
+  sudo: yes
+  vars_prompt:
+    - name: "ubuntu_password"
+      prompt: "Password you would like to use for ubuntu user on new workstation"        
+  tasks:
+    - include: ubuntu_login.yml
+    - include: nx_server.yml        
+    - include: dev_env.yml
+    - include: eclipse.yml
+    - include: ec2_auth.yml
+    - include: mapr.yml

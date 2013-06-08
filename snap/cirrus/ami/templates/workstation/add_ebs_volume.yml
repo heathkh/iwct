@@ -1,0 +1,20 @@
+---
+- hosts: all
+  sudo: yes        
+  vars:
+    filesystem_type: ext4
+    mount_path: /media/$volume_name
+  tasks:
+    - name: Format filesystem
+      command: mkfs -t $filesystem_type $volume_device
+    
+    - name: Mount filesystem and update fstab to mount it in the future
+      mount: name=$mount_path src=$volume_device fstype=$filesystem_type opts=noatime,user state=mounted
+      
+    - name: fix permissions
+      file: path=$mount_path owner=ubuntu group=ubuntu state=directory  
+      
+    
+    
+    
+      

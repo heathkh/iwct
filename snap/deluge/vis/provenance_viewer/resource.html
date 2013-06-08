@@ -1,0 +1,151 @@
+<!-- {% autoescape None %} -->
+<html>
+<head>
+<title>{% block title %}Resource Viewer{% end %}</title>
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<script src="../static/d3-duration-timeline.js"></script>
+<style type="text/css">
+.axis path, .axis line {
+  fill: none;
+  stroke: black;
+  shape-rendering: crispEdges;
+}
+
+text {
+  font-family: sans-serif;
+  font-size: 11px;
+}
+
+.axis text {
+  font-family: sans-serif;
+  font-size: 11px;
+}
+
+.link {
+  fill: none;
+  stroke: #ccc;
+  stroke-opacity: 0.25;
+  stroke-width: 1.0px;  
+}
+
+.link:hover {
+  fill: none;
+  stroke: black;
+  stroke-opacity: 0.9;
+  stroke-width: 1.0px;  
+}            
+
+.link.resource_input_highlight {
+  fill: none;
+  stroke: red;
+  stroke-opacity: 0.9;
+  stroke-width: 2.0px;  
+}          
+
+.link.resource_output_highlight {
+  fill: none;
+  stroke: green;
+  stroke-opacity: 0.9;
+  stroke-width: 2.0px;  
+}
+</style>  
+</head>
+  
+<body>
+
+<div id="timeline"></div>
+<div id="info"></div>
+
+<script type="text/javascript">
+var provenance_json = {{provenance_json}};
+var rows = [];
+for (var i=0; i < provenance_json.length; ++i){
+  var row = provenance_json[i]
+  row.run_time_sec = row.end_time_sec - row.start_time_sec
+  rows[i] = row 
+}    
+
+var RenderTimeline = function(rows) {
+  // order rows by start time 
+	rows = rows.sort(function(a,b) {return a.start_time_sec - b.start_time_sec;})
+	var timeline_data = []
+	var links = [];
+	
+	// create lookup table from fingerprint to row id
+	var fingerprint_to_rowid = {};
+	for (var i=0; i < rows.length; ++i){
+	  fingerprint_to_rowid[rows[i].fingerprint] = i;
+	}
+	
+	var cur_time
+	for (var i=0; i < rows.length; ++i){
+	  var fingerprint = rows[i].fingerprint
+	  timeline_data[i] = { label: rows[i].name, 
+	                       fingerprint: fingerprint, 
+	                       times: [{starting_time: rows[i].squeeze_time_start_sec,
+	                               ending_time: rows[i].squeeze_time_end_sec,
+	                               row_id: i}]
+                       };
+	  
+	  var input_fingerprints = rows[i].input_fingerprints
+	  for (var j=0; j < input_fingerprints.length; ++j){
+	    var input_row_id = fingerprint_to_rowid[input_fingerprints[j]]
+	    if (input_row_id != null){  
+	      links.push({source: input_row_id, target: i })
+	    }
+	  }
+	} 
+	 
+	var formatTime = d3.time.format("%H:%M");
+  var formatTimeDuration = function(sec) { return formatTime(new Date(sec*1000)); };  
+	var width = 1024; 
+	var chart = d3.timeline()	 
+	  .width(width)
+	  .stack()
+	  .margin({left:150, right:30, top:0, bottom:0})
+	  .tickFormat({ format: formatTimeDuration })
+	  .click(function (d, i, datum) {
+	    var new_url = '/resource?fingerprint=' + datum.fingerprint
+	    window.open(new_url, '_self');
+	  })	  
+	
+	var svg = d3.select("#timeline").append("svg").attr("width", width)
+	  .datum(timeline_data).call(chart);
+	
+	var resource_items = d3.selectAll("#timeline svg rect")[0]
+    
+	var diagonal = d3.svg.diagonal()
+	      .target( function(d){ var r = resource_items[d.source]; var p = {x: r.x.baseVal.value + r.width.baseVal.value/2.0, y: r.y.baseVal.value + r.height.baseVal.value}; return p; })
+	      .source( function(d){var r = resource_items[d.target]; var p = {x: r.x.baseVal.value  + r.width.baseVal.value/2.0, y: r.y.baseVal.value};  return p; })  
+
+	var link = svg.selectAll(".link")
+        .data(links)
+        .enter().append("path")
+        .attr("class", "link")
+        .attr("d", diagonal)
+  
+  var resource_mouseover =  function (d, i, datum) {
+        d3.selectAll('.link').filter( function(l) { return l.source == i } ).classed('resource_input_highlight',true);       
+        d3.selectAll('.link').filter( function(l) { return l.target == i} ).classed('resource_output_highlight',true);
+        console.log(rows[i])
+      }            
+  chart.mouseover(resource_mouseover)
+	
+	var resource_mouseout = function (d, i, datum) {
+        d3.selectAll('.link').filter( function(l) { return l.source == i } ).classed('resource_input_highlight',false);      
+        d3.selectAll('.link').filter( function(l) { return l.target == i} ).classed('resource_output_highlight',false);         
+      }  
+	chart.mouseout(resource_mouseout)
+	
+	svg.selectAll(".timeline-label").on('mouseover', resource_mouseover)
+	svg.selectAll(".timeline-label").on('mouseout', resource_mouseout)
+	
+}
+
+//RenderTable(rows);
+RenderTimeline(rows);
+</script>
+
+             
+</body>
+</html>

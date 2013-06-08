@@ -1,0 +1,21 @@
+- name: Update
+  command: apt-get update
+ 
+# causes a hang! 
+#- name: Upgrade
+#  command: apt-get upgrade  
+
+- name: Install x11 packages
+  apt: pkg=gnome-desktop-environment
+  
+- name: Run install script
+  script: nomachine-setup --server --keys
+  #Notes: This updates the NX key here: /usr/share/NX/keys/default.id_dsa.key
+  
+- name: Tell ubuntu to use 2d gnome instead of unity (not compatible with nx)
+  lineinfile: dest=/usr/NX/etc/node.cfg regexp="^COMMAND_START_GNOME" line="COMMAND_START_GNOME=\"gnome-session --session=gnome-classic\""
+  
+- name: Restart nxserver 
+  service: name=nxserver state=restarted
+  ignore_errors: yes
+
