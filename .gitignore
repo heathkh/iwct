@@ -1,0 +1,18 @@
+# ignore all eclipse IDE project files
+*.cproject
+*.project
+*.pydevproject
+/.settings
+/.amateras
+
+# ignore all common binary files by default
+*.tar
+*.tar.gz
+*.zip
+*.pyc
+/build
+/build_*
+
+# ignore all core dump files
+core 
+
