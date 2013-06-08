@@ -1,0 +1,65 @@
+<html>
+{% import math %}
+<head>
+<style>
+body {
+  font-family: "CMU Serif"; 
+	background: url(/images/wallpaper.png) repeat; 
+	color: #000000; 
+	text-align:center; 
+} 
+
+table {
+  font-size: 10pt;
+  
+}
+</style>
+  
+<title>{% block title %}predicted: {{predicted_label}} actual: {{actual_label}} {% end %}</title>  
+</head>
+
+<body>
+<table>
+<tr>
+  <td>predicted_label:</td>
+  <td>{{predicted_label}}</td>
+</tr>
+<tr>
+  <td>actual_label:</td>
+  <td>{{actual_label}}</td>
+</tr>  
+</table>
+
+{% for region_label in region_label_data %}
+  <div style='float: left; margin-left: 10px; margin-top: 10px; height: 330px; '>
+    <!-- <p>{{ 'region_id: %d (freq: %0.2f)' % (region_label.item_id,  region_label.frequency) }}</p> -->   
+    <!-- <p>{{ 'image_id: %d' %  regions_dict[region_label.item_id].image_id }}</p> -->
+    <div style='width: 200px; margin-left:auto; margin-right:auto;'>
+    <div style='height: 150px;'>
+    {% raw regionid_to_svg[region_label.item_id] %}
+    </div>
+    
+    <table style='border-collapse:collapse; width: 180px; margin-left:auto; margin-right:auto;'>
+      <tr style='border-bottom:1pt solid black;'>
+        <th style='width: 60px;'>Score</th>
+        <th style='width: 120px;'>Label</th>        
+      </tr>
+	    {% for i, label_stats in enumerate(region_label.label_stats.entries) %}	    
+	    <tr>	      
+	      <td style='text-align: center;'>{{'%0.1e' % (label_stats.mean)}}</td>
+	      <!-- <td>{{ '%0.2f' % (math.log10(label_stats.mean))}}</td>  -->
+	      
+	      <!--<td>{% if i < len(region_label.label_stats.entries) -1 %}
+	          {{'%0.2f' % (math.log10(label_stats.mean) - math.log10(region_label.label_stats.entries[i+1].mean)) }}
+	          {% end %}
+	      </td>-->
+	      <!-- <td>{{'%0.1e' % (label_stats.variance)}}</td>  -->
+	      <td>{{labelid_to_labelnames[label_stats.label_index].replace('british_telephone_booth','british_phonebooth')}}</td>
+	    </tr>
+	    {% end %}
+    </table>
+    </div>
+  </div>             
+{% end %}        
+</body>
+</html>

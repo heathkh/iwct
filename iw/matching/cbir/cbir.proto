@@ -1,0 +1,17 @@
+package cbir;
+import "iw/matching/cbir/bow/bow.proto";
+import "iw/matching/cbir/full/full.proto";
+
+message QueryResult {
+  required uint64 image_id = 1;
+  required float score = 2;
+}
+
+message QueryResults {
+  repeated QueryResult entries = 1;
+}
+
+message CbirParams {
+  optional FullCbirParams full = 1;
+  optional BowCbirParams bow = 2;
+}

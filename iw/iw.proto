@@ -1,0 +1,364 @@
+package iw;
+
+message JpegImage {
+  required bytes data = 1;
+  required uint32 width = 2;
+  required uint32 height = 3;
+}
+
+message Point2D {
+  required float x = 1;
+  required float y = 2;
+}
+ 
+message Matrix2x2 {
+  required float m00 = 1;
+  required float m01 = 2;
+  required float m10 = 3;  
+  required float m11 = 4;
+}
+
+message Matrix3x3 {
+  required float m00 = 1;
+  required float m01 = 2;
+  required float m02 = 3;  
+  required float m10 = 4;
+  required float m11 = 5;
+  required float m12 = 6;
+  required float m20 = 7;
+  required float m21 = 8;
+  required float m22 = 9;  
+}
+
+
+message BoundingBox {
+  required uint32 x1 = 1; // min x coord
+  required uint32 y1 = 2; // min y coord
+  required uint32 x2 = 3; // max x coord
+  required uint32 y2 = 4; // max y coord
+}
+
+
+message FeatureExtractorParams {
+  // Exactly one of the optional params messages should be set depending of feature type
+  // Extractors from opencv
+  message OcvSiftParams {
+    required uint32 num_octave_layers = 1 [default = 3];
+    required double contrast_threshold = 2 [default = 0.04];
+    required double edge_threshold = 3 [default = 30];
+    required double sigma = 4 [default = 1.2];
+    required bool upright = 5 [default = false];
+    required bool root_sift_normalization = 6 [default = true];
+  }
+  optional OcvSiftParams ocv_sift_params = 1;
+
+  // Extractors from VGG (http://www.robots.ox.ac.uk/~vgg/)
+  message VggAffineSiftParams {
+    enum Type {
+      AFFINE_HESSIAN = 0;
+      AFFINE_HARRIS = 1;
+    }
+    required Type type = 1;
+    required double threshold = 2 [default = 200];
+    required bool root_sift_normalization = 3 [default = true];
+  }
+  optional VggAffineSiftParams vgg_affine_sift_params = 2;
+}
+
+// Extractor params can be tuned to generate a target mean number of features
+// per unit image area for a given dataset.  This is useful for benchmarks where
+// features of different types should generate about the same number of
+// features across the whole dataset in order to make a fair comparison.
+message DensityTunedFeatureExtractorParams {
+  required string dataset_name = 1;  // name of dataset used for tuning (params are only expected to be valid for this dataset)
+  required double desired_density = 2; // in features per sq pixel (e.g. 0.003 -> 1000 features in a 640x480 image on average)
+  required FeatureExtractorParams params = 3;
+}
+
+
+message FeatureDescriptor  {
+  required bytes data = 1;
+}
+
+message FeatureKeypoint {
+  required Point2D pos = 1; 
+  optional float radius = 2; // radius of keypoint circle in pixels (be careful, not all detectors use same convention)
+  optional float angle = 3; // in radians
+  optional Matrix2x2 iso = 4; // optional isometric normalization transformation
+}
+
+message ImageFeatures  {
+  optional uint32 width = 1;
+  optional uint32 height = 2;
+  repeated FeatureKeypoint keypoints = 3;  // assumed keypoints (and desc) are ordered in decreasing keypoint strength
+  repeated FeatureDescriptor descriptors = 4;
+  optional float extraction_time = 5;  // in seconds
+}
+
+message SimilarityModel {
+  required float m00 = 1;
+  required float m01 = 2;
+  required float m02 = 3;  
+  required float m10 = 4;
+  required float m11 = 5;
+  required float m12 = 6;
+}
+
+message AffineModel {
+  required float m00 = 1;
+  required float m01 = 2;
+  required float m02 = 3;  
+  required float m10 = 4;
+  required float m11 = 5;
+  required float m12 = 6;
+}
+
+message HomographyModel {
+  required float m00 = 1;
+  required float m01 = 2;
+  required float m02 = 3;  
+  required float m10 = 4;
+  required float m11 = 5;
+  required float m12 = 6;
+  required float m20 = 7;
+  required float m21 = 8;
+  required float m22 = 9; //// consider dropping and use scaled to unity convention 
+}
+
+message EpipolarModel {
+  required float m00 = 1;
+  required float m01 = 2;
+  required float m02 = 3;  
+  required float m10 = 4;
+  required float m11 = 5;
+  required float m12 = 6;
+  required float m20 = 7;
+  required float m21 = 8;
+  required float m22 = 9;  
+}
+
+message Correspondence {
+  required FeatureKeypoint a = 1;
+  required FeatureKeypoint b = 2;
+  required uint32 id_a = 3;  // id of feature in image a 
+  required uint32 id_b = 4;  // id of feature in image b
+}
+
+message GeometricMatch {
+  repeated Correspondence correspondences = 1;
+  
+  // Exactly one of these should be populated to indicate the type of geometric model
+  optional SimilarityModel similarity_model = 2;
+  optional AffineModel affine_model = 3;
+  optional HomographyModel homography_model = 4;
+  optional EpipolarModel epipolar_model = 5;
+  
+  // Properties
+  optional float nfa = 10; // quality metric provided for a-contrio matching methods (log 10 of Number of False Alarms)
+  optional float precision = 11; // max error of transfered points (in image b)
+  
+}
+
+message GeometricMatches {
+  repeated GeometricMatch entries = 1;
+}
+
+message GeometricMatchCandidateProperties {
+  optional float score = 1;
+  optional uint32 rank = 2;
+}
+
+message GeometricMatchCandidate {
+  required uint64 image_a_id = 1;
+  required uint64 image_b_id = 2;  
+  optional GeometricMatchCandidateProperties properties = 3;  
+}
+  
+message GeometricMatchResult {
+  required uint64 image_a_id = 1;
+  required uint64 image_b_id = 2;  
+  optional GeometricMatchCandidateProperties properties = 3;  
+  repeated GeometricMatch matches = 4;  
+  //required uint32 phase = 5;
+  optional uint32 phase = 5;
+}
+
+
+message ACRansacImageMatcherParams {
+  required int32 max_iterations = 1   [default = 20000];
+  required float precision_ratio = 2  [default = 0.25]; // required model precision expressed as fraction of the image size: precision_error_pixels = precision_ratio*(w+h/2)) 
+  required float max_scaling = 3      [default = 5.0];      // When seeking upright models, set this to reject models with in-plane rotations larger than this value (in radians)
+  required float max_correspondence_scale_deviation = 4 [default = 0.75]; // Require correspondence scale to agree with model scale
+  optional float max_in_plane_rotation = 5;            // When seeking upright models, set this to reject models with in-plane rotations larger than this value (in radians)
+     
+}
+
+// Specifies parameters to construct an image matcher
+message ImageMatcherConfig {
+  required string feature_type = 1;
+  
+  // Each additional matcher type adds an optional entry that indicates
+  // which matcher is being used
+  optional ACRansacImageMatcherParams similarity_acransac_params = 10; 
+  optional ACRansacImageMatcherParams affine_acransac_params = 11;
+}
+
+// Contains results of a simple all-pairs matching benchmark for different
+// matcher configurations
+message ImageMatcherBenchmarkResults {
+  required ImageMatcherConfig matcher_config = 1;
+  required double precision = 2;
+  required double recall = 3;
+  required double avg_feature_extraction_time = 4;
+  required double avg_pair_match_time = 5;
+}
+
+/// TODO: move stuff related to shuffling map reduces for matching out
+
+/*
+message MatchCandidateFeatures {
+  required LocalFeatures features_a = 1;
+  required LocalFeatures features_b = 2;
+}
+*/
+
+/*
+message MatchCandidateSetJoinMetadata {
+  required uint64 image_id = 1;  
+  required uint64 set_id = 2;  
+  optional ImageFeatures features = 4;
+}
+*/
+
+message MatchBatchMetadata {
+  required uint64 image_id = 1;  
+  required bytes batch_name = 2;
+  required bool is_primary = 3;  
+  optional ImageFeatures features = 4;
+  optional GeometricMatchCandidateProperties properties = 5;
+}
+
+
+message Scalar {
+  required double value = 1; 
+}
+
+message Index {
+  required uint64 value = 1;
+}
+
+// Image Graph
+message ImageGraph {
+  message Vertex {
+    required uint64 image_id = 1;
+  }
+  repeated Vertex vertices = 1;
+
+  message Edge {
+    required uint32 src = 1;
+    required uint32 dst = 2;
+    required float weight = 3;
+    optional float nfa = 4;
+    optional uint32 phase = 5 [default = 0];
+  }
+
+  repeated Edge edges = 2;
+  optional uint32 num_phases = 3 [default = 1];
+}
+
+// Image Region Graph
+message ImageRegionGraph {
+  message Vertex {
+    required uint64 image_id = 1;
+    required BoundingBox bounding_box = 2;
+    enum VertexType {
+      MATCH = 1;
+      CLUSTER = 2;
+      GROUND_TRUTH = 3;
+      CLUSTER_OVERLAP_GROUND_TRUTH = 4;
+      CLUSTER_NONOVERLAP_GROUND_TRUTH = 5;
+    }
+    required VertexType type = 3;
+  }
+  repeated Vertex vertex = 1;
+
+  message Edge {
+    required uint32 src = 1;
+    required uint32 dst = 2;
+    required float weight = 3;
+  }
+
+  repeated Edge edge = 2;
+}
+
+
+
+message LabelPredictionStatistics {
+  required uint32 label_index = 1;
+  required float mean = 2;
+  required float variance = 3;
+}
+
+message LabelPredictionStatisticsList {
+  repeated LabelPredictionStatistics entries = 1;
+}
+
+message ConfusionMatrixItemFreq {
+  message Row {
+    message Cell {
+      message Item {
+        required uint64 item_id = 1;
+        required float frequency = 2;
+        required LabelPredictionStatisticsList label_stats = 3;
+      }
+      repeated Item items = 1;  // should be sorted decreasing by frequency
+    }
+    repeated Cell cells = 1;
+  }
+  repeated Row rows = 1;
+}
+
+message GaussianVector {
+  repeated double mean = 1 [packed=true];
+  repeated double std = 2 [packed=true];
+}
+
+message Gaussian {
+  required double mean = 1;
+  required double std = 2;
+}
+
+message GaussianMatrix {
+  required uint32 rows = 1;
+  required uint32 cols = 2;
+  repeated double mean = 3 [packed=true];
+  repeated double std = 4 [packed=true];
+}
+
+
+message MotifCorrespondences {
+  required uint64 motif_id = 1;
+  repeated uint32 feature_indices = 2;
+}
+
+/*
+message MotifSummary {
+  message Motif {
+    required uint64 id = 1;
+    repeated uint64 image_ids = 2;
+  }
+  repeated Motif motifs = 1;
+}
+*/
+
+message Motif {
+  message Image {
+    required uint64 image_id = 1;
+    repeated FeatureKeypoint keypoints = 2; // the subset of features in this image that are part of this motif
+    repeated FeatureDescriptor descriptors = 3;
+  }
+  required uint64 id = 1;
+  repeated Image images = 2;
+
+}
+

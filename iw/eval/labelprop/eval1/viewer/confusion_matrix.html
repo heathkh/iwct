@@ -1,0 +1,236 @@
+<!-- {% autoescape None %} -->
+<!DOCTYPE html>
+<meta charset='utf-8'>
+<title>Image Graph - Co-occurrence Matrix</title>
+<script src='http://d3js.org/d3.v2.min.js?2.8.1'></script>
+<style>
+	text.active {
+	  fill: red;
+	  opacity: 1.0;
+	}
+	.cell text {	  
+	  font-size: 0.7em;
+	  fill: black;
+	}
+	.cell rect {	  
+	  stroke-width; 0px;	  
+	}
+</style>
+
+<body>
+<h1>TIDE Label Propagation Confusion Matrix</h1>
+<div id='matrix' style='float:left; padding: 10px;'> </div>
+<form id='params'>  
+  <h3>Normalization</h3>   
+  <select id='normalization'>
+    <option value='none'>mean # images</option>
+    <option value='row'>mean precision</option>
+    <option value='col'>mean recall</option>      
+  </select>  
+  
+  <h3>Order</h3>   
+  <select id='order'>
+    <option value='name'>by name</option>
+    <option value='precision'>by precision</option>
+    <option value='recall'>by recall</option>      
+  </select>
+</form>
+
+<script>
+// Define matrix data
+
+// Set test data for quickly debugging script 
+var matrix_headers = {{matrix_headers}};
+var num_labels = matrix_headers.length;
+var matrix_unnorm = {{matrix_unnorm}};
+var matrix_precision = {{matrix_precision}};
+var matrix_recall = {{matrix_recall}};
+var svg_size = {{size}}
+
+/*
+// Manually set test data for quickly debugging script... also documents the expected json format that python must generate
+var matrix_headers = [{'name' : 'apples', 'precision':  0.8, 'recall': 0.1}, {'name' : 'oranges', 'precision':  0.2, 'recall': 0.2}];
+var num_labels = matrix_headers.length;
+
+var matrix_unnorm =    [ [0.1, 0.4],
+                         [0.6, 0.3] ];
+                         
+var matrix_precision = [ [0.2, 0.8],
+                         [1.0, 0.6] ];
+                         
+var matrix_recall =    [ [0.1, 0.1],
+                         [0.2, 0.1] ];
+                         
+var svg_size = 600;      
+*/
+
+// Define the size of the svg
+var margin = {top: 100, right: 10, bottom: 20, left: 100};
+var width =  svg_size - margin.left - margin.right;
+var height = svg_size - margin.top - margin.bottom;
+var scale = d3.scale.ordinal().rangeBands([0, width]);
+
+// resize div that will hold svg (otherwise svg is hidden)  
+d3.select('#matrix')
+ .attr('width', width + margin.left + margin.right)
+ .attr('height', height + margin.top + margin.bottom);
+
+// Create the root svg and group element
+var svg = d3.select('#matrix').append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom)
+  .append('g')
+    .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
+
+// Create background rect
+svg.append('rect')
+      .attr('class', 'background')
+      .attr('width', width)
+      .attr('height', height);
+
+function CreateCustomColorScale(color_map_data){  
+  var color_map_domain_scale = d3.scale.linear().domain([0, color_map_data.length-1]).range([0, 1]);
+  var color_map_domain = d3.range(color_map_data.length).map(color_map_domain_scale);
+  var color = d3.scale.linear().domain( color_map_domain ).range(color_map_data).interpolate(d3.interpolateHsl);
+  return color;
+}
+
+// Create the color function that maps scalar values from (0...1) to the standard jet color map (blue = 0, red = 1.0)
+var jet_color_map_data = [d3.rgb(0,0,127), d3.rgb(0,127,255), d3.rgb(0,255,255), d3.rgb(127,255,127), d3.rgb(255,255,0), d3.rgb(255,127,0), d3.rgb(255,0,0), d3.rgb(127,0,0)];
+var color = CreateCustomColorScale(jet_color_map_data);
+
+// Define the different col/row orderings and set the default
+var orders = {
+  name : d3.range(num_labels).sort( function(a, b) { var val_a = matrix_headers[a].name; var val_b = matrix_headers[b].name;  val_a = (val_a == 'unknown') ? 'zzzz' : val_a; val_b = (val_b == 'unknown') ? 'zzzz' : val_b;  return d3.ascending(a, b); }),    
+  precision : d3.range(num_labels).sort( function(a, b) { return d3.descending(matrix_headers[a].precision, matrix_headers[b].precision); }),
+  recall : d3.range(num_labels).sort( function(a, b) { return d3.descending(matrix_headers[a].recall, matrix_headers[b].recall); })
+};
+// default sort by name
+scale.domain(orders.name);
+
+
+function UpdateMatrix() {
+  // init data for selected normalization
+  var matrix_data = null;
+  selected_normalization = d3.select('select#normalization').property('value');  
+  switch(selected_normalization) {
+	  case 'none':	   
+      matrix_data = matrix_unnorm;
+      break;
+    case 'row':
+		  matrix_data = matrix_precision;
+		  break;
+    case 'col':
+		  matrix_data = matrix_recall;
+		  break;
+  }
+
+  // init scale for selected ordering
+  selected_order = d3.select('select#order').property('value');
+  switch(selected_order) {
+	  case 'name':     
+		  scale.domain(orders.name);
+		  break;
+    case 'precision':
+      scale.domain(orders.precision);
+      break;
+    case 'recall':
+      scale.domain(orders.recall);
+      break;
+  }
+  
+  // define rows
+  var rows = svg.selectAll('.row').data(matrix_data);  
+  // entering rows  
+  var rows_entering = rows.enter().append('g')
+    .attr('class', 'row')
+  // updating rows
+  rows
+    .attr('transform', function(d, i) { return 'translate(0,' + scale(i) + ')'; });
+    
+            
+  // define row headers
+  var row_headers = rows_entering.append('text')
+    .attr('x', -6)
+    .attr('y', scale.rangeBand() / 2)
+    .attr('dy', '5 px')
+    .attr('text-anchor', 'end')            
+    .attr('font-size', '10px')
+    .attr('class', 'row_title')
+    .text(function(d, i) { return matrix_headers[i].name; });
+  
+  // define cells
+  var cells = rows.selectAll('.cell').data(Object);  
+  // entering cells
+  var cells_entering = cells.enter().append('g')
+    .attr('class', 'cell')    
+        
+  cells_entering.append('rect')
+    .attr('width', scale.rangeBand())	  
+	  .attr('height', scale.rangeBand());	      
+  // Place the value as text in the center of each cell   
+  cells_entering.append('text')
+    .style('text-anchor', 'middle')
+    .attr('x', function(d) { return scale.rangeBand() / 2; })
+    .attr('y',  scale.rangeBand() / 2)
+    .attr('font-size', '10px')    
+  // Attach event handlers to cell  
+  function cell_clicked(d, j, i) {      
+    url = '/confusionmatrixcell?row='+ i + '&col=' + j;
+    window.open(url);
+    console.log('predicted: ' + matrix_headers[i].name + ' actual: ' + matrix_headers[j].name + ' (row: ' + i + ' col: ' + j + ')');    
+  }  
+  function cell_mouseover(d, cell_i, cell_j) {
+    d3.selectAll('#matrix text.row_title').classed('active', function(d, i) { return i == cell_j; });
+    d3.selectAll('#matrix text.col_title').classed('active', function(d, i) { return i == cell_i; });
+  }  
+  function cell_mouseout() {
+    d3.selectAll('#matrix text').classed('active', false);
+  }  
+  cells_entering
+   .on('mouseover', cell_mouseover)
+   .on('mouseout', cell_mouseout)
+   .on('mousedown', cell_clicked);		  
+	// updating cells 
+	cells	        
+	  .attr('transform', function(d, i) { return 'translate(' + scale(i) + ', 0)'; })
+	  .style('fill', function(d) { return color(d);  });
+	  
+	
+	// cell text
+	var cell_text = cells.select('text')
+	cell_text
+	  .attr('dy', '0.3em') // trick to center text vertically
+	  .text(function(d) { return d3.format('.2f')(d); }) // value formated to 2 decimal places
+	  
+  
+  // define columns
+  var columns = svg.selectAll('.column').data(matrix_data);
+  var columns_entering = columns.enter().append('g')
+    .attr('class', 'column')    
+  // create column headers
+  columns_entering.append('text')
+	  .attr('x', 6)
+	  .attr('y', scale.rangeBand() / 2)
+	  .attr('dy', '5 px')
+	  .attr('text-anchor', 'start')  
+	  .attr('font-size', '10px') 
+	  .attr('class', 'col_title')
+	  .text(function(d, i) { return matrix_headers[i].name; });
+	  
+	// updating columns
+	columns
+	  .attr('transform', function(d, i) { return 'translate(' + scale(i) + ')rotate(-90)'; });
+}
+
+// Handle change of normalization option  
+d3.select('select#normalization').on('change', function() {UpdateMatrix();});  
+  
+// Handle change of order 
+d3.select('select#order').on('change', function() {UpdateMatrix();});	  
+
+UpdateMatrix();
+
+</script>
+
+</body>

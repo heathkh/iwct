@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+<meta charset="utf-8">
+<title>D3 Demo: Axes</title>    
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<style type="text/css">      
+  .axis path,
+  .axis line {
+    fill: none;
+    stroke: black;
+    shape-rendering: crispEdges;
+  }
+  
+  .axis text {
+    font-family: sans-serif;
+    font-size: 11px;
+  }
+</style>
+</head>
+
+<body>
+<script type="text/javascript">    
+    d3.json("http://localhost:8888/lpbench_results.json", function(json) {
+      //var property_names = %{property_names};
+      //var color_by_property_index = 0;
+      
+      //Width and height
+      var w = 600;
+      var h = 400;
+      var padding = 50;
+      
+      var FBetaScore = function(precision, recall, beta) { return (1.0 + beta*beta) * (precision*recall)/((beta*beta*precision) + recall); };
+      
+      var f_score_beta = 0.25;
+      var ComputeFScoreForData = function(d) { 
+        var p = d.eval1.precision.mean;            
+		    var r = d.eval1.recall.mean;
+		    var f = FBetaScore(p, r, f_score_beta);		    		   
+		    return f;
+      };
+      
+      var GetTitleForData = function(d) { 
+        var p = d.eval1.precision.mean;            
+        var r = d.eval1.recall.mean;
+        var f = FBetaScore(p, r, f_score_beta);
+        var FormatFloat = d3.format("0.3f");
+        return 'f: ' + FormatFloat(f) + ' p: ' + FormatFloat(p) + ' r: ' + FormatFloat(r);        
+      };
+      
+      
+      var GetXForData = function(d) { 
+        return d.matches_construction_time_sec;        
+      };
+      
+      var GetYForData = function(d) { 
+        return ComputeFScoreForData(d);         
+      };
+      
+      //Static dataset
+      var dataset = json;
+            
+      //Create scale functions
+      var xScale = d3.scale.linear()
+                   .domain(d3.extent(dataset, function(d) { return d.matches_construction_time_sec; }))
+                   //.domain( [0, d3.max(dataset, function(d) { return d.matches_construction_time_sec; })])
+                   .range([padding, w - padding * 2]);
+                 
+      xScale.nice();
+
+      var yScale = d3.scale.linear()              
+                   .domain(d3.extent(dataset, function(d) { return ComputeFScoreForData(d); }))   
+                   .range([h - padding, padding]);
+      
+      var formatTime = d3.time.format("%M:%S");
+      var formatMinutes = function(sec) { return formatTime(new Date(sec*1000)); };
+      
+      //Define X axis
+      var xAxis = d3.svg.axis()
+                .scale(xScale)
+                .orient("bottom")
+                .ticks(10)                                             
+                .tickFormat(formatMinutes);
+
+      //Define Y axis
+      var yAxis = d3.svg.axis()
+                .scale(yScale)
+                .orient("left")
+                .ticks(5);
+
+      //Create SVG element
+      var svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", w)
+            .attr("height", h);
+
+	    svg.append("text")
+	        .attr("class", "x label")
+	        .attr("text-anchor", "middle")
+	        .attr("x", w/2)
+	        .attr("y", h-5)
+	        .text("Construction Time (m:s)");
+	
+			svg.append("text")
+			    .attr("class", "y label")
+			    .attr("text-anchor", "middle")			    
+			    //.attr("dy", ".75em")
+			    .attr("transform", "rotate(-90) translate("+ -h/2 + ", " + 15 +")")
+			    .text("Performance (F-measure)");
+			    
+      //Create circles
+      var points = svg.selectAll("g")
+         .data(dataset)
+         .enter()
+         .append("g")
+         
+      points.append("circle")   
+			  .attr("cx", function(d) {
+			    return xScale(GetXForData(d));
+			  })
+			  .attr("cy", function(d) {            
+			    return yScale(GetYForData(d));
+			  })
+			  .attr("r", 5)
+			  .attr("fill", function(d) {
+			     var color = 'red';
+			     return color;
+			  })
+			  .on("mouseover", function(d) { d3.select('#info').html( '<pre>' + JSON.stringify(d.config, null, " ") + '</pre>' ); } )
+		  .append("title")			
+			 .text(function(d) { return GetTitleForData(d); });
+      
+      points.append("text")
+         .text(function(d, i) {
+             return i;
+         })         
+         .attr("x", function(d) {
+           return xScale(GetXForData(d));
+         })
+         .attr("y", function(d) {
+           return yScale(GetYForData(d));
+         })         
+         .attr("font-family", "sans-serif")
+         .attr("font-size", "8px")
+         .attr("fill", "black");
+      
+      
+      //Create X axis
+      svg.append("g")
+        .attr("class", "axis")
+        .attr("transform", "translate(0," + (h - padding) + ")")
+        .call(xAxis);
+      
+      //Create Y axis
+      svg.append("g")
+        .attr("class", "axis")
+        .attr("transform", "translate(" + padding + ",0)")
+        .call(yAxis);
+
+      /*    
+      $(document).ready(function(){
+    	  
+          $('#controls').append('<select id="foo"></select>');          
+          $.each(property_names, function(val, text) {
+            $('#foo').append($('<option></option>').val(val).html(text))       
+          });
+          
+          
+          $('#foo').change(function(){
+              var val = $(this).find('option:selected').val();
+              //alert('i selected: ' + val);
+              color_by_property_index = val;
+              
+              svg.selectAll("circle")                            
+              .attr("fill", function(d) {
+                  color = d[3][val];
+                  //console.log(color)
+                  return color;
+              })
+              
+              
+          });
+       });
+       */
+        
+   });
+      
+</script>
+
+
+<div id="chart"></div>
+<div id="controls"></div>
+<div id="info"></div>
+    
+</body>
+  
+   
+</html>
+  

@@ -1,0 +1,22 @@
+package lpbench;
+
+import "iw/flow/app/itergraph/itergraph.proto";
+import "iw/eval/labelprop/eval1/eval1.proto";
+import "iw/eval/labelprop/eval2/eval2.proto";
+import "snap/deluge/deluge.proto";
+
+message Configuration {
+  required string dataset_name = 1;  // ex: tide_v08
+  required itergraph.IterGraphParams iter_graph = 2;
+}
+
+message ConfigurationResult {
+  required Configuration config = 1;
+  required labelprop_eval1.Result eval1 = 2;
+  required labelprop_eval2.Result eval2 = 3;
+  repeated deluge.ResourceProvenance matches_provenance_list = 11; // contains full timing stats
+}
+
+
+
+

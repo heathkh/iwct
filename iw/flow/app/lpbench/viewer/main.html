@@ -1,0 +1,453 @@
+<!-- {% autoescape None %} -->
+<html>
+<head>
+<title>{% block title %}Label Propagation Evaluation Viewer{% end %}</title>
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>
+<script src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.2/jquery-ui.min.js"></script>
+<script src="http://threedubmedia.googlecode.com/files/jquery.event.drag-2.0.min.js"></script>
+<script src="http://mleibman.github.io/SlickGrid/slick.core.js"></script>
+<script src="http://mleibman.github.io/SlickGrid//plugins/slick.checkboxselectcolumn.js"></script>
+<script src="http://mleibman.github.io/SlickGrid//plugins/slick.autotooltips.js"></script>
+<script src="http://mleibman.github.io/SlickGrid//plugins/slick.cellrangedecorator.js"></script>
+<script src="http://mleibman.github.io/SlickGrid//plugins/slick.cellrangeselector.js"></script>
+<script src="http://mleibman.github.io/SlickGrid//plugins/slick.cellcopymanager.js"></script>
+<script src="http://mleibman.github.io/SlickGrid//plugins/slick.cellselectionmodel.js"></script>
+<script src="http://mleibman.github.io/SlickGrid//plugins/slick.rowselectionmodel.js"></script>
+<script src="http://mleibman.github.io/SlickGrid/slick.grid.js"></script>
+
+<link rel="stylesheet" href="http://mleibman.github.io/SlickGrid/slick.grid.css" type="text/css"/>
+<link rel="stylesheet" href="http://mleibman.github.io/SlickGrid/css/smoothness/jquery-ui-1.8.16.custom.css" type="text/css"/>
+<link rel="stylesheet" href="http://mleibman.github.io/SlickGrid/examples/examples.css" type="text/css"/>
+
+<script src="../static/d3.legend.js"></script>
+
+<style type="text/css">
+*{
+  font-family: "CMU Serif";
+  font-size: 14px;   
+}
+
+.line {
+  fill: none;
+  stroke: steelblue;
+  stroke-width: 1.5px;
+}
+  
+.axis path, .axis line {
+  fill: none;
+  stroke: black;
+  shape-rendering: crispEdges;
+}
+
+.axis text {
+  font-family: "CMU Serif";  
+}
+
+.xlabel {
+  /*font-size: 14px;*/
+}
+
+.ylabel {
+  /*font-size: 14px;*/
+}
+
+.legend-box {
+   fill: none;
+   stroke: none;
+   stroke-width: 1px;
+}
+
+</style>
+  
+</head>
+  
+<body>
+
+<div id="chart"><svg></svg></div>
+<div id="myGrid" style="width:600px;height:200px;"></div>
+<div id="controls"></div>
+<div id="info"></div>
+
+<script type="text/javascript">
+	var rows = {{rows}};    
+	var selected_rows = [];
+	var f_score_beta = 1.0;    
+	var FBetaScore = function(precision, recall, beta) { var eps= 1e-32; return (1.0 + beta*beta) * (precision*recall)/((beta*beta*precision) + recall + eps); };
+	//var formatTime = d3.time.format("%H:%M");
+	var formatTime = d3.time.format("%-M");
+	var formatMinutes = function(sec) { return formatTime(new Date(sec*1000)); };    
+	var FormatFloat = d3.format("0.3f");
+	
+	var GenerateDistinctColors = function(num_values){
+	  var index_to_hue = d3.scale.linear().domain([0, num_values]).range([0, 350.0])
+	  colors = []
+	  for (i =0; i < num_values; ++i){
+	    var h =  index_to_hue(i);
+	    var s = 1.0;
+	    var l = 0.48;
+	    colors[i] = d3.hsl(h, s, l).toString()
+	  }
+	  return colors;
+	}
+	
+	var color_by_field = null;
+	var value_to_color = null;    
+	var value_to_pos = null;
+	    
+
+  //var property_names = %{property_names};
+  //var color_by_property_index = 0;  
+  //Width and height
+  var w = 800;
+  var h = 500;
+  var padding = 50;
+  
+  var ComputeFScoreForData = function(d) { 
+    return FBetaScore(d.precision, d.recall, f_score_beta);
+  };
+  
+  var GetTitleForData = function(d) {         
+    return d.index;        
+  };  
+  var GetXForData = function(d) { return d.squeeze_time_end_sec };  
+  var GetYForData = function(d) { return ComputeFScoreForData(d); };
+  
+  //Create scale functions
+  var xScale = d3.scale.linear()
+               .domain( [0, d3.max(rows, function(d) { return d.time_series[d.time_series.length-1].squeeze_time_end_sec })])               
+               .range([padding, w - padding * 2]);             
+  xScale.nice();
+
+  var yScale = d3.scale.linear()              
+               .domain( [ d3.min(rows, function(d) { return ComputeFScoreForData(d.time_series[0]); }), 
+                          d3.max(rows, function(d) { return ComputeFScoreForData(d.time_series[d.time_series.length-1]); })] 
+                      )   
+               .range([h - padding, padding]);
+  
+  //Define X axis
+  var xAxis = d3.svg.axis()
+            .scale(xScale)
+            .orient("bottom")
+            .ticks(10)                                             
+            .tickFormat(formatMinutes);
+
+  //Define Y axis
+  var yAxis = d3.svg.axis()
+            .scale(yScale)
+            .orient("left")
+            .ticks(5);
+
+  //Create SVG element
+  var svg = d3.select("#chart svg")        
+        .attr("width", w)
+        .attr("height", h);
+
+  svg.append("text")
+        .attr("class", "xlabel")
+        .attr("text-anchor", "middle")
+        .attr("x", w/2)
+        .attr("y", h-5)
+        .text("Construction Time (minutes)");
+
+  svg.append("text")
+        .attr("class", "ylabel")
+        .attr("text-anchor", "middle")              
+        //.attr("dy", ".75em")
+        .attr("transform", "rotate(-90) translate("+ -h/2 + ", " + 15 +")")
+        .text("Performance (F-Score)");
+    
+  //Create X axis
+  svg.append("g")
+    .attr("class", "axis")
+    .attr("transform", "translate(0," + (h - padding) + ")")
+    .call(xAxis);
+  
+  //Create Y axis
+  svg.append("g")
+    .attr("class", "axis")
+    .attr("transform", "translate(" + padding + ",0)")
+    .call(yAxis);
+
+  var data_series_group = svg.append("g")
+  var data_series_label_group = svg.append("g")
+
+var UpdatePlot = function() {  
+  var filtered_row_data = []
+  for (var i=0; i < selected_rows.length; ++i){
+    var row_id =  selected_rows[i]
+    filtered_row_data.push(rows[row_id])
+  }
+  
+  var series = data_series_group.selectAll("g").data(filtered_row_data, function(d) { return d ? d.index: null; })
+  
+  // Create pipeline performance lines
+  var line = d3.svg.line()
+    .x(function(d) { return xScale(GetXForData(d)) })
+    .y(function(d) { return yScale(GetYForData(d)) })
+  
+  
+  // DATA SERIES
+  
+  // Handle entering point groups
+  var entering_series = series.enter().append('g')
+  
+  var legend_value = function(d) {
+         var value = null; 
+         if (color_by_field){
+           value = d[color_by_field]            
+         }           
+         return value;
+      }
+      
+    var legend_pos = function(d) {
+         var pos = 0; 
+         var value = legend_value(d);
+         if (value){            
+           pos = value_to_pos[value]
+         }           
+         return pos;
+      }   
+      
+   var legend_color =  function(d) {
+        var color = 'gray'; 
+         var value = legend_value(d);
+         
+         if (value){            
+           color = value_to_color[value]
+           console.log(color);
+         }           
+         return color;
+      }
+  
+  entering_series.append("path")
+      .attr("class", "line")
+      .attr("d", function(d) { return line(d.time_series); })      
+      .style("stroke", 'gray')
+      //.on("click", function(d) { grid.scrollRowIntoView(d.index); })
+      .on("mouseover", function(d) { HandleRowHovered(d.index); } )  
+    .append("title")
+      .text(function(d) {  return GetTitleForData(d); });    
+ 
+  
+  // updating series
+  series.select("path")
+    .attr("data-legend", legend_value)
+    .attr("data-legend-color", legend_color)    
+    .attr("data-legend-pos", legend_pos)
+    .transition().duration(0)
+    .style("stroke", legend_color)
+    .style("stroke-opacity", 0.8)
+      
+  // exiting series
+  series.exit().remove();
+  
+  
+  // SERIES LABELS
+  var series_labels = data_series_label_group.selectAll("g").data(filtered_row_data, function(d) { return d ? d.index: null; })
+  
+  // entereing series lables
+  var entering_series_labels = series_labels.enter().append("g") 
+  
+  
+  
+  entering_series_labels
+    .datum(function(d) { return {name: d.index, value: d.time_series[d.time_series.length - 1]}; })
+    .attr("transform", function(d) { return "translate(" + xScale(GetXForData(d.value) + 20.0) + "," + yScale(GetYForData(d.value)) + ")"; })
+    
+  entering_series_labels.append("rect")
+      .attr("x", -5)
+      .attr("y", -5)
+      .attr("width", 10)
+      .attr("height", 10)
+      .attr("rx", 4)
+      .attr("ry", 4)
+      .style("fill", 'white')
+      .style("fill-opacity", 0.5)
+
+      
+  entering_series_labels.append("text")
+      .attr("dy", ".35em")
+      .attr("text-anchor", "middle")
+      .text(function(d) { return d.name; });
+  
+  // exiting series labels
+  series_labels.exit().remove();
+  
+  // LEGEND
+  var legend_x = w - padding;
+  var legend_y = padding;
+  
+  legend = data_series_group.append("g")
+	  .attr("class","legend")
+	  .attr("transform","translate("  + legend_x + "," + legend_y + ")")	  
+	  .call(d3.legend)
+      
+      
+}
+
+
+function alphanum(a, b) {
+  function chunkify(t) {
+    var tz = [], x = 0, y = -1, n = 0, i, j;
+
+    while (i = (j = t.charAt(x++)).charCodeAt(0)) {
+      var m = (i == 46 || (i >=48 && i <= 57));
+      if (m !== n) {
+        tz[++y] = "";
+        n = m;
+      }
+      tz[y] += j;
+    }
+    return tz;
+  }
+
+  var aa = chunkify(a);
+  var bb = chunkify(b);
+
+  for (x = 0; aa[x] && bb[x]; x++) {
+    if (aa[x] !== bb[x]) {
+      var c = Number(aa[x]), d = Number(bb[x]);
+      if (c == aa[x] && d == bb[x]) {
+        return c - d;
+      } else return (aa[x] > bb[x]) ? 1 : -1;
+    }
+  }
+  return aa.length - bb.length;
+}
+
+var ColorLinesByField = function(field_name){
+  // get number of discrete values for this field
+  var values = {}
+  for (i = 0; i < rows.length; ++i){
+	var row = rows[i]
+	  var val = row[field_name];        
+	  if (val){         
+	    values[val] = true;
+	  }
+	}
+	var num_values = 0;
+	var value_list = [];
+	//for (var a in values) { if (values.hasOwnProperty(a)) { value_list.++num_values} }             
+	for (var a in values) { if (values.hasOwnProperty(a)) { value_list.push(a);} }
+	num_values = value_list.length
+	
+	value_list.sort(alphanum)
+	
+	console.log(value_list)
+	
+	new_value_to_pos = {}
+	for (var a in values) { 
+	 new_value_to_pos[a] = value_list.indexOf(a);
+	}
+	      
+	// compute a distinct set of colors for this many items
+	color_list = GenerateDistinctColors(num_values);
+	 
+	var new_value_to_color = {}
+	var i = 0;
+	for (var a in values) { 
+	  if (values.hasOwnProperty(a)) {
+	    new_value_to_color[a] = color_list[i++];         
+	  }
+	}
+	
+	color_by_field = field_name
+	value_to_color = new_value_to_color	
+	value_to_pos = new_value_to_pos
+	UpdatePlot(rows); 
+}
+
+
+
+var RenderTable = function(rows){  
+  function timeFormatter(row, cell, value, columnDef, dataContext) {
+    return formatMinutes(value);
+  }
+  
+  function floatFormatter(row, cell, value, columnDef, dataContext) {
+    return FormatFloat(value);
+  }
+  
+  var checkboxSelector = new Slick.CheckboxSelectColumn({
+    cssClass: "slick-cell-checkboxsel"
+  });
+  
+  var columns = [
+    checkboxSelector.getColumnDefinition(),
+    { id: "index", name: "index", field: "index", sortable: true },
+    { id: "feature", name: "feature", field: "feature", sortable: true },    
+    //{ id: "precision", name: "precision", field: "precision", sortable: true, formatter: floatFormatter },
+    //{ id: "recall", name: "recall", field: "recall", sortable: true, formatter: floatFormatter },    
+    //{ id: "f-score", name: "f-score", field: "f-score", sortable: true, formatter: floatFormatter },
+    { id: "fpm", name: "fpm", field: "fpm", sortable: true },
+    { id: "cbir_type", name: "cbir_type", field: "cbir_type", sortable: true},
+    //{ id: "cbir.scorer.correspondence_filter", name: "cbir.scorer.correspondence_filter", field: "cbir.scorer.correspondence_filter", sortable: true},
+    //{ id: "cbir.flann.kdtree.trees", name: "cbir.flann.kdtree.trees", field: "cbir.flann.kdtree.trees", sortable: true},
+    //{ id: "cbir.flann.kdtree.checks", name: "cbir.flann.kdtree.checks", field: "cbir.flann.kdtree.checks", sortable: true},
+    //{ id: "cbir.num_neighbors_per_index_shard", name: "cbir.num_neighbors_per_index_shard", field: "cbir.num_neighbors_per_index_shard", sortable: true},
+    //{ id: "phase.matches.cbir_rank", name: "phase.matches.cbir_rank", field: "phase.matches.cbir_rank", sortable: true},
+    //{ id: "phase.matches.cbir_score'", name: "phase.matches.cbir_score'", field: "phase.matches.cbir_score'", sortable: true},
+    //{ id: "phase.matches.motif_exp", name: "phase.matches.motif_exp", field: "phase.matches.motif_exp", sortable: true},   
+  ];
+  
+  var options = {
+    enableCellNavigation: false,
+    enableColumnReorder: true,
+    multiColumnSort: true
+  };
+
+  var data = rows;
+  var grid = new Slick.Grid("#myGrid", data, columns, options);
+  grid.setSelectionModel(new Slick.RowSelectionModel({selectActiveRow: false}));
+  grid.registerPlugin(checkboxSelector);
+  
+	grid.onSort.subscribe(function (e, args) {
+	  var cols = args.sortCols;	
+	  data.sort(function (dataRow1, dataRow2) {
+	    for (var i = 0, l = cols.length; i < l; i++) {
+	      var field = cols[i].sortCol.field;
+	      var sign = cols[i].sortAsc ? 1 : -1;
+	      var value1 = dataRow1[field], value2 = dataRow2[field];
+	      var result = (value1 == value2 ? 0 : (value1 > value2 ? 1 : -1)) * sign;
+	      if (result != 0) {
+	        return result;
+	      }
+	    }
+	    return 0;
+	  });
+	  grid.invalidate();
+	  grid.render();
+	});
+	
+	grid.onHeaderClick.subscribe(function(e,args){
+    ColorLinesByField(args.column.field);     
+  });
+    
+  
+  grid.onSelectedRowsChanged.subscribe(function(e,args){
+    selected_rows = grid.getSelectedRows();
+    UpdatePlot();
+  });
+  return grid;
+};
+
+
+var grid = RenderTable(rows);
+
+
+var HandleRowHovered = function(row_index) { 
+  d3.select('#info').html( '<pre>' + JSON.stringify(rows[row_index], null, " ") + '</pre>' );
+  
+  grid.scrollRowIntoView(row_index);
+  grid.flashCell(row_index, 0, 100);
+}
+
+
+
+    
+</script>
+
+             
+</body>
+</html>

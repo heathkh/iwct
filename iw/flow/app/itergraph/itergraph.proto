@@ -1,0 +1,38 @@
+package itergraph;
+
+import "iw/matching/cbir/cbir.proto";
+import "iw/iw.proto";
+
+
+message IterGraphParams {
+  required iw.DensityTunedFeatureExtractorParams tuned_feature_extractor_params = 1;
+  required iw.ImageMatcherConfig image_matcher_config = 2;
+  required cbir.CbirParams cbir = 3;
+  repeated PhaseParams phase = 4;
+}
+
+message MotifExpansionPhaseParams {
+  required string background_features_uri = 1;
+}
+
+message PhaseParams {
+  // These params are relevant to all phases
+  required uint32 max_match_candidates = 1;  // each phase will process at most this number of match candidates (as selected by one of several strategies)
+  required uint32 max_vertex_degree = 2; // if both images in a candidate edge have at least this many matching images, we skip this candidate because both images are already locally well connected
+  required uint32 max_match_batch_size = 3; // controls how many images to pack into a unit of matching work (a match batch)
+  required uint32 max_image_replication_factor = 4;  // limits the number of times a single image can participate in a candidate edge during each phase.  Question: should this be coupled to the num cbir candidates per image and max candidates per phase?
+
+  enum PhaseType {
+    PHASE_TYPE_CBIR_SCORE = 0;
+    PHASE_TYPE_CBIR_RANK = 1;
+    PHASE_TYPE_MOTIF_EXPANSION = 2;
+  }
+  // skip to 100 in case we want to add more generic params above
+  required PhaseType type = 100;
+
+  // Only one of these should be populated with params relevant to a particular phase strategy
+  //optional GlobalBestCandidatePhaseParams global_best = 101;
+  //optional PerImageBestCandidatePhaseParams local_best = 102;
+  optional MotifExpansionPhaseParams motif_expansion = 103;
+}
+

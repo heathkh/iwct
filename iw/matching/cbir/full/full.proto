@@ -1,0 +1,116 @@
+package cbir;
+
+message Count {
+  required uint32 value = 1;
+}
+
+message FlannParams {
+  enum Algorithm {
+    FLANN_INDEX_LINEAR = 0; // exact search
+    FLANN_INDEX_KDTREE = 1;
+  }
+  required Algorithm algorithm = 1 [default = FLANN_INDEX_KDTREE];
+
+  message KDTreeParams {
+    required uint32 trees = 1 [default = 4];
+    required uint32 checks = 2 [default = 30];
+  }
+
+  optional KDTreeParams kdtree_params = 10;
+}
+
+message FeatureIndexImageMetadata {
+  required uint64 image_id = 1;
+  required uint32 num_features_cumulative = 2;  
+}
+
+// Compact encoding of the keypoint position and scale
+message Keypoint {
+  required uint32 x = 1;  // varint encoding makes x and y about 2 bytes each
+  required uint32 y = 2;
+  required uint32 radius_100 = 3; // Store radius*100 as uint32 (2 decimals of precision is enough, and allows more compact varint encoding for typical small values in ~2 bytes)
+}
+
+message ImageKeypoints {
+  repeated Keypoint entries = 1;
+}
+
+message FeatureNeighbor {
+  required uint64 image_id = 1;
+  required float distance = 2;
+  required Keypoint keypoint = 3;
+}
+
+message FeatureNeighbors {
+  repeated FeatureNeighbor entries = 1;
+  optional Keypoint keypoint = 2;
+}
+
+message ImageFeaturesNeighbors {
+  repeated FeatureNeighbors features = 1;
+}
+
+message SmoothCorrespondenceFilterParams {
+  required float search_radius = 1 [default = 30];  // in pixels
+}
+
+message WGCCorrespondenceFilterParams {
+  enum Type {
+    NONE = 0;
+    SCALE = 1;
+    SCALE_AND_TRANSLATION = 2;
+  }
+  required Type type = 1;
+  required float scale_max = 2 [default = 4.0];
+  required float scale_histogram_size = 3 [default = 50];
+}
+
+
+message QueryScorerParams {
+
+  required int32 max_results = 1 [default = 100];
+
+  enum Scoring {
+    COUNT = 0;
+    ADAPTIVE = 1;
+  }
+  required Scoring scoring = 2 [default = ADAPTIVE];
+
+  enum Normalization {
+    NONE = 0;
+    NRC = 1;
+  }
+  required Normalization normalization = 3 [default = NRC];
+
+  enum CorrespondenceFilter {
+    NO_FILTER = 0;
+    SMOOTH_FILTER = 1;
+    WGC_FILTER = 2;
+  }
+  required CorrespondenceFilter correspondence_filter = 4 [default = NO_FILTER];
+  optional SmoothCorrespondenceFilterParams smooth_correspondence_filter_params = 5;
+  optional WGCCorrespondenceFilterParams wgc_correspondence_filter_params = 6;
+
+  required bool bursty_candidates = 7 [default = true];
+
+}
+
+
+
+message SmoothnessFilterDebugResult {
+  required uint64 image_id = 1;
+  repeated float smoothness_scores = 2;
+}
+
+message SmoothnessFilterDebugResults {
+  repeated SmoothnessFilterDebugResult entries = 1;
+}
+
+
+message FullCbirParams {
+  required int32 num_index_shards = 1;
+  required int32 num_neighbors_per_index_shard = 2;
+  required FlannParams flann = 3;
+  required QueryScorerParams scorer = 4;
+
+}

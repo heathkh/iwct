@@ -1,0 +1,12 @@
+\begin{tabular}{l c c c }
+\hline
+\textbf{Object} & \textbf{Precision} & \textbf{Recall} & \textbf{F-Score}\\
+\hline
+{% for row in table.rows %}
+    {{row.name.replace('_', ' ')}} & {{ '%0.3f' % (row.precision) }} & {{ '%0.3f' % (row.recall) }} & {{ '%0.3f' % (row.f_score) }} \\  
+{% endfor %} 
+\hline
+\textbf{mean} & {{ '%0.3f' % table.MeanPrecision()}} & {{ '%0.3f' % table.MeanRecall()}} & {{ '%0.3f' % table.MeanFScore()}}\\
+\hline
+\end{tabular}
+

@@ -1,0 +1,30 @@
+<html>
+  <head>
+    <title>{% block title %} Image Graph Viewer{% end %}</title>  
+  </head>
+  
+  <body>
+    <h1>Data: </h1>
+    {{ app.image_graph_uri }}
+         
+    
+    <h1>View graph neighborhood</h1>      
+    <form action="/neighborhood" method="GET">
+      Image id: <input type="text" name="image_id" value="{{initial_image_id}}"><br>
+      num hops: <input type="text" name="num_hops" value="3"><br>
+      max num neighbors: <input type="text" name="max_num_neighbors" value="50"><br>
+      <input type="submit">
+    </form>        
+    
+    
+    <h1>View object subgraph</h1>      
+    <form action="/objectsubgraph" method="GET">
+      Object id: <select name="object_id"">
+                 {% for object in objects_dict.itervalues() %}
+                   <option value="{{object.id}}">{{object.name}}</options>
+                 {% end for %}
+                 </select>            
+      <input type="submit">
+    </form>
+  </body>
+</html>

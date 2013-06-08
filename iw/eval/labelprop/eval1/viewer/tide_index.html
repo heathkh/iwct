@@ -1,0 +1,19 @@
+<html>
+  <head>
+    <title>{% block title %}Tide Index{% end %}</title>  
+  </head>
+  
+  <body>
+    <h1>Objects:</h1>
+      {% for object in tide_dataset.objectid_to_object.itervalues() %}
+        <h2>{{object.name}}</h2>
+        <h2>Pos</h2>                
+        {% for image_id in object.pos_image_ids %}
+          <a href="/image?id={{image_id}}">{{image_id}}</a> &nbsp;
+        {% end %}        
+        <h2>Aux</h2>                
+        {% for image_id in object.none_image_ids %}
+          <a href="/image?id={{image_id}}">{{image_id}}</a> &nbsp;
+        {% end %}
+      {% end %}    
+</html>

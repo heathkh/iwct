@@ -1,0 +1,28 @@
+{% for page_index in range(table.num_pages) %} 
+\begin{landscape}
+\begin{table}
+\caption{Matching Pipeline Configuration Parameters {{table.configs_on_page(page_index) | first}}-{{table.configs_on_page(page_index) | last}} }
+\centering
+\tiny
+\begin{tabular}{l {% for i in range(table.num_configs) %} p{0.9cm} {% endfor %} }
+\hline
+Parameters / Configurations {% for i in table.configs_on_page(page_index) %} & {{i}} {% endfor %}\\
+\hline
+\begin{minipage}[t]{4cm}
+\setlength{\DTbaselineskip}{7pt}
+\DTsetlength{0.2em}{0.4em}{0.2em}{0.4pt}{1pt}
+\dirtree{% raw %}{%{% endraw %}
+.1 .{% for row in table.rows %}
+.{{row.depth+1}} {{row.name.replace('_', ' ') }}. {% endfor %}
+}\end{minipage}
+{% for i in table.configs_on_page(page_index) %} &
+  - 
+  {% for row in table.rows %}
+       {{ row.column_data[i] }}
+  {% endfor %} 
+{% endfor %}\\
+\hline
+\end{tabular}
+\end{table}
+\end{landscape}
+{% endfor %}

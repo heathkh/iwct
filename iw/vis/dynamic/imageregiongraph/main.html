@@ -1,0 +1,17 @@
+<html>
+  <head>
+    <title>{% block title %} Image Region Graph Viewer{% end %}</title>  
+  </head>
+  
+  <body>
+    <h1>Data: </h1>
+    {{ app.irg_uri }}
+    <h1>View graph neighborhood</h1>  
+    <form action="/graph" method="GET">
+      vertex id: <input type="text" name="vertex_id" value="{{initial_vertex_id}}"><br>
+      num hops: <input type="text" name="num_hops" value="3"><br>
+      max num neighbors: <input type="text" name="max_num_neighbors" value="50"><br>
+      <input type="submit">
+    </form>        
+  </body>
+</html>

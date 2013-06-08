@@ -1,0 +1,133 @@
+<div style="padding: 10px;">
+<h1>${title}</h1>
+</div>
+<br>
+
+<div id="graph" style="float:left; width: 800px; height: 800px; border:1px solid black;"></div>
+
+<img id="image_preview" style="max-width: 400px; max-height: 400px;">
+
+
+<script>
+  var width = 800,
+      height = 800;
+  
+  var central_region_id = ${central_region_id}; 
+  
+  var node_data = ${node_json};
+  console.log(node_data.length);
+  
+  var edge_data = ${edge_json};
+  console.log(edge_data.length);
+  
+  var tide_data = ${tide_json};
+  console.log(tide_data);
+  
+  var force = d3.layout.force()
+      .charge(-5)
+      .linkStrength( function(d) { return d.weight * 0.1; } )
+      .linkDistance(25)
+      .theta(0.7)
+      .friction(0.9)
+      .gravity(0.01)
+      .size([width, height]);
+
+  force.nodes(node_data)
+       .links(edge_data);
+         
+  var svg = d3.select("div#graph").append("svg")
+      .attr("width", width)
+      .attr("height", height)
+      .style("border", "1px solid gray")
+      .attr("pointer-events", "all")
+    .append("g")
+      .call(d3.behavior.zoom().scaleExtent([0.5, 10]).on("zoom", zoom))
+    .append("g");
+  
+  // background rect to capture mouse events for zoom and pan  
+  svg.append("rect")
+    .attr('fill', 'white')
+    .attr("width", width)
+    .attr("height", height);  
+      
+  function zoom() {
+    svg.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");    
+  }      
+    
+  var link = svg.selectAll("line.link")
+      .data(edge_data)
+    .enter().append("line")
+      .attr("class", "link")
+      .style("stroke-width", '1px' )
+      .style("opacity", function(d) { return d3.max([d.weight, 0.1]); } )      
+      //.style("opacity", function(d) { return d.weight; } )
+      .on("click", function(d) {  ViewMatch(d.source.image_id, d.target.image_id); })
+
+  link.append("title")
+      .text(function(d) { return d.weight + ' (' + d.nfa + ')'; });
+  
+  
+  var NodeColor = function(d) { 
+  
+      var MATCH = 1;
+      var CLUSTER = 2;
+      var GROUND_TRUTH = 3;
+      var CLUSTER_OVERLAP_GROUND_TRUTH = 4;
+      var CLUSTER_NONOVERLAP_GROUND_TRUTH = 5;
+  
+    var c = 'black'; 
+    if (d.type == GROUND_TRUTH && d.tide_label == 'pos'){
+      c = d3.rgb(tide_data[d.tide_object_id].color);
+    }
+    else if (d.type == MATCH) {
+      c = 'gray';
+    }
+    else if (d.type == CLUSTER_OVERLAP_GROUND_TRUTH || d.type == CLUSTER_NONOVERLAP_GROUND_TRUTH || d.type == CLUSTER){
+      c = 'black';
+    }
+    return c;
+  }
+      
+  var node = svg.selectAll("circle.node")
+      .data(node_data)
+    .enter().append("circle")
+      .attr("class", "node")
+      .attr("r", function(d) { return d.image_id == central_region_id ? 6 : 2;})      
+      //.style("stroke", function(d) { c = d3.rgb(tide_data[d.tide_object_id].color); return d.tide_label == 'pos' ? c.darker(0.75) : 'white';} )
+      //.style("stroke-width", '1px')            
+      //.style("fill", function(d) { return d3.rgb(tide_data[d.tide_object_id].color);})
+      .style("fill", NodeColor )
+      .on("mouseover", function(d) { updateImagePreview(d.image_id); })      
+      .call(force.drag);
+
+  node.append("title")
+      .text(function(d) { return d.image_id + ' (' + tide_data[d.tide_object_id].name + ')'; });
+
+  force.on("tick", function() {
+    link.attr("x1", function(d) { return d.source.x; })
+        .attr("y1", function(d) { return d.source.y; })
+        .attr("x2", function(d) { return d.target.x; })
+        .attr("y2", function(d) { return d.target.y; });
+
+    node.attr("cx", function(d) { return d.x; })
+        .attr("cy", function(d) { return d.y; });
+  });
+
+  function updateImagePreview(image_id) {
+	  console.log(image_id);
+	  d3.select("img#image_preview").attr("src", '/image?id=' + image_id);	  
+  }
+  
+  function ViewMatch(image_a_id, image_b_id) {
+    console.log(image_a_id + ' ' +image_b_id);
+    window.open ('/match?image_a=' + image_a_id + '&image_b=' + image_b_id);   
+  }
+  
+  
+  force.start();
+  for (var i = 0; i < 250; ++i) force.tick();
+  force.stop();
+  
+
+</script>
+

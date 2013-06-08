@@ -1,0 +1,6 @@
+<html>
+{% for info in cluster_info %}
+    {{info[0]}} <a href="imagegraph.html?initial_image={{info[1]}}"><img src="images/{{info[1]}}.jpg" style="max-width:100px"></a> <br>  
+{% endfor %}
+</html> 
+

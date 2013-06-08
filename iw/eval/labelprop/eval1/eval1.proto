@@ -1,0 +1,24 @@
+package labelprop_eval1;
+
+import "iw/iw.proto";
+
+message Result {
+  repeated uint32 label_ids = 1;
+  repeated string label_names = 2;
+
+  message Phase {
+    required iw.Gaussian precision = 3;
+    required iw.Gaussian recall = 4;
+
+    required iw.GaussianVector object_precision = 5;  // length: N
+    required iw.GaussianVector object_recall = 6; // length: N
+
+    required iw.GaussianMatrix confusion_matrix = 7; // dim: N x N
+    required iw.ConfusionMatrixItemFreq confusion_matrix_item_freq = 8; // dim: N x N
+  }
+
+  repeated Phase phases = 3;
+}
+
+
+

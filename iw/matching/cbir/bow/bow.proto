@@ -1,0 +1,42 @@
+package cbir;
+
+// Cluster centroid that defines a visual word for a feature space
+message VisualWord {
+  repeated float entries = 1 [packed=true];
+}
+
+// Cluster centroid that defines a visual word for a feature space
+message ClusterObservation {
+  repeated double entries = 1 [packed=true];
+  required uint64 count = 2;
+}
+
+message VisualVocabularyMetadata {
+  required uint32 num_dimensions = 1;  
+}
+
+// Set of visual words that defines a visual vocabulary
+//message VisualVocabulary {
+//	required uint32 num_dimensions = 1;
+//  repeated VisualWord words = 2;
+//}
+
+// List of visual word IDs (index into VisualVocabulary array)
+message BagOfWords  {
+  repeated fixed32 word_id = 1 [packed=true];
+}
+
+
+message SparseVector {
+	repeated uint64 indices = 1 [packed=true];  // indices of non-zero elements (sorted ascending)
+	repeated double values = 2 [packed=true];  // values of corresponding non-zero elements	
+}
+
+
+
+message BowCbirParams {
+  required string visual_vocabulary_uri = 1;
+  required uint32 visual_vocab_size = 2;
+  required uint32 num_candidates = 3;
+  required string implementation = 4; // ctis or inria
+}
