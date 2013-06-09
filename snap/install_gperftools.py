@@ -62,5 +62,5 @@ def InstallPerformanceTools():
 
 
 if __name__ == "__main__":
-  #InstallLibunwind()
+  InstallLibunwind()
   InstallPerformanceTools()
