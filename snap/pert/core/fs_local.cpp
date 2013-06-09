@@ -330,6 +330,7 @@ bool LocalFileSystem::FileSize(const std::string& uri, uint64* size){
     return false;
   }
   LOG(FATAL) << "not yet implemented";
+  return false;
 }
 
 
