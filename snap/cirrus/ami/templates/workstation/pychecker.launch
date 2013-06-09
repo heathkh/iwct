@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <launchConfiguration type="org.eclipse.ui.externaltools.ProgramLaunchConfigurationType">
 <mapAttribute key="org.eclipse.debug.core.environmentVariables">
-<mapEntry key="PYTHONPATH" value="/home/ubuntu/git/iwmapr3/build:/home/ubuntu/git/iwmapr3/build/snap:"/>
+<mapEntry key="PYTHONPATH" value="/home/ubuntu/git/iwct/build:/home/ubuntu/git/iwct/build/snap:"/>
 </mapAttribute>
 <stringAttribute key="org.eclipse.ui.externaltools.ATTR_LAUNCH_CONFIGURATION_BUILD_SCOPE" value="${none}"/>
 <stringAttribute key="org.eclipse.ui.externaltools.ATTR_LOCATION" value="/usr/bin/pychecker"/>

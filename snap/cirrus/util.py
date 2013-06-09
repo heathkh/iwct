@@ -1,6 +1,5 @@
 #!/usr/bin/python
 
-from snap.cirrus import config
 from snap.boto import ec2
 from snap.boto import exception
 from snap.boto.ec2 import connection
@@ -12,9 +11,9 @@ import multiprocessing
 import subprocess
 import sys
 import time
-import uuid
+
 import math
-import shutil
+
 #import shlex
 
 import tempfile
@@ -36,13 +35,13 @@ def RunPlaybookOnHost(playbook_path, host, private_key, extra_vars = None):
   inventory = ansible.inventory.Inventory([host])
   if len(inventory.list_hosts()) == 0:
     LOG(FATAL, "provided hosts list is empty")
-  
   stats = callbacks.AggregateStats()
   playbook_cb = ansible.callbacks.PlaybookCallbacks(verbose=ansible.utils.VERBOSITY)
   runner_cb = ansible.callbacks.PlaybookRunnerCallbacks(stats, verbose=ansible.utils.VERBOSITY)
   pb = ansible.playbook.PlayBook(playbook=playbook_path,
                             host_list = [host],
                             remote_user = 'ubuntu',
+                            private_key_file = None,
                             private_key = private_key,
                             stats = stats,
                             callbacks = playbook_cb,
@@ -168,10 +167,14 @@ def RemoteExecuteCmd(args):
   
   while True:
     try:
-      client.connect(hostname, pkey=private_key)
+      client.connect(hostname, username='ubuntu', pkey=private_key, allow_agent=False, look_for_keys=False)
       break
     except socket.error as e:
       print 'socket timed out...'
+      time.sleep(5)
+    except paramiko.AuthenticationException as e:
+      print e
+      time.sleep(5) 
     
   channel = client.get_transport().open_session()
   channel.exec_command(cmd)
@@ -280,6 +283,8 @@ def AreHostsReachable(hostnames, ssh_key):
   return ssh_ok
            
 def WaitForHostsReachable(hostnames, ssh_key):
+  """ ssh_key contents of the private key as a string (for DB apis)."""
+  
   while True:
     unreachable = GetUnreachableHosts(hostnames, ssh_key)
     if unreachable:
@@ -349,7 +354,7 @@ def WaitForSnapshotCompleted(snapshot):
 
 
 def __WaitForInstance(instance, desired_state):
-  print 'Waiting for instance %s to change to %s' % (instance, desired_state)
+  print 'Waiting for instance %s to change to %s' % (instance.id, desired_state)
   while True:
     instance.update()
     state = instance.state
@@ -461,29 +466,6 @@ def GetRootStoreAndVirtualizationType(instance_type):
       virtualization_type = 'paravirtual'      
     return  root_store_type, virtualization_type  
 
-
-##############################################################################
-#  Context 
-##############################################################################
-#
-#class TemporaryKeyPair(object):
-#  """ This class creates a temporary key-pair that is deleted when object is destroyed. """
-#  def __init__(self):
-#    self.ec2 = CreateConnection()
-#    self.name = 'cirrus_tmp_' + uuid.uuid4().hex
-#    self.key_dir_path = tempfile.mkdtemp()
-#    self.keypair = self.ec2.create_key_pair(self.name)
-#    self.keypair.save(self.key_dir_path)
-#    self.private_key_filename = '%s/%s.pem' % (self.key_dir_path, self.name)
-#    return
-#  
-#  def __enter__(self):
-#    return self
-#
-#  def __exit__(self, type, value, traceback):
-#    self.keypair.delete()
-#    shutil.rmtree(self.key_dir_path)
-#    return
 
 
 ##############################################################################

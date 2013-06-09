@@ -60,8 +60,8 @@ class Cli(object):
       self.instance_type = 'c1.xlarge'
       self.ubuntu_release_name = 'precise'
       self.mapr_version = 'v2.1.3'
-    except:
-      raise
+    except:        
+      pass
     return
     
   def __SaveConfigFile(self):

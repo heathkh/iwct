@@ -1,12 +1,12 @@
 from snap.pyglog import *
 from snap.cirrus import util
-from snap.cirrus import config
 from string import Template
 from snap.cirrus.ami import manager
 import time
 import hashlib
 from snap import boto
 from snap.boto.iam.connection import IAMConnection
+from snap.boto.ec2.connection import EC2Connection
 from snap.boto.s3.connection import S3Connection
 from snap.boto.exception import  BotoServerError
 from snap.boto.s3.key import Key
@@ -48,12 +48,13 @@ def IsHPCInstanceType(instance_type):
 def IAMUserReady(iam_aws_id, iam_aws_secret):
   """ Returns true if IAM user can login. """
   ready = False
-  try:
-    s3 = S3Connection(aws_access_key_id=iam_aws_id, aws_secret_access_key=iam_aws_secret)
-    ready = True
-  except:
-    LOG(INFO, 'failed to connect as user: %s' % (iam_aws_id))
-    raise
+  if iam_aws_id and iam_aws_secret:
+    try:
+      s3 = S3Connection(aws_access_key_id=iam_aws_id, aws_secret_access_key=iam_aws_secret)
+      ready = True
+    except:
+      LOG(INFO, 'failed to connect as user: %s' % (iam_aws_id))
+      raise
   return ready  
     
 
@@ -65,7 +66,7 @@ def InitCirrusIAMUser(root_aws_id, root_aws_secret):
   s3 = S3Connection(aws_access_key_id=root_aws_id,  aws_secret_access_key=root_aws_secret)
   cirrus_iam_username = 'cirrus'  
   cirrus_cred_bucketname = 'cirrus_iam_config_%s' % (hashlib.md5(root_aws_id).hexdigest())
-  cirrus_cred_bucket_key = 'cirrus_iam_sec'
+  
   has_cirrus_user = False
   response = iam.get_all_users()  
   for user in response['list_users_response']['list_users_result']['users']:
@@ -93,15 +94,20 @@ def InitCirrusIAMUser(root_aws_id, root_aws_secret):
     
   if iam_id:
     # fetch secret from s3
+    cirrus_cred_bucket_key = 'cirrus_iam_sec_%s' % (hashlib.md5(iam_id).hexdigest())
     key = cred_bucket.lookup(cirrus_cred_bucket_key)
-    CHECK(key, 'secret for access key not stored... please delete all access keys and try again.')
-    iam_secret = key.get_contents_as_string()
-    CHECK(iam_secret)
-  else:    
+    #CHECK(key, 'secret for access key not stored... please delete all access keys and try again.')
+    if key:
+      iam_secret = key.get_contents_as_string()
+      
+  # part of the credentials is unknown, so make new ones and store those
+  if not iam_id or not iam_secret:    
+    LOG(INFO, 'creating new aws credentials for IAM user %s.' % cirrus_iam_username) 
     response = iam.create_access_key(cirrus_iam_username)
     new_key = response['create_access_key_response']['create_access_key_result']['access_key']
     iam_id = new_key['access_key_id']
     iam_secret = new_key['secret_access_key']
+    cirrus_cred_bucket_key = 'cirrus_iam_sec_%s' % (hashlib.md5(iam_id).hexdigest())
     #store secret in s3 for future use 
     k = Key(cred_bucket)
     k.key = cirrus_cred_bucket_key
@@ -111,11 +117,15 @@ def InitCirrusIAMUser(root_aws_id, root_aws_secret):
 
 class Manager(object):
   def __init__(self, region, iam_aws_id, iam_aws_secret):
+    CHECK(region)
+    CHECK(iam_aws_id)
+    CHECK(iam_aws_secret)
     self.valid_regions = ['us-east-1', 'us-west-1']
-    self.region = region
+    self.region_name = region
     self.iam_aws_id = iam_aws_id
     self.iam_aws_secret = iam_aws_secret 
-    self.ec2 = boto.ec2.connect_to_region(region, aws_access_key_id=iam_aws_id, aws_secret_access_key=iam_aws_secret)
+    #self.ec2 = boto.ec2.connect_to_region(region_name, aws_access_key_id=iam_aws_id, aws_secret_access_key=iam_aws_secret)
+    self.ec2 = EC2Connection(region = util.GetRegion(region_name), aws_access_key_id=iam_aws_id, aws_secret_access_key=iam_aws_secret)
     self.s3 = S3Connection(aws_access_key_id=iam_aws_id, aws_secret_access_key=iam_aws_secret)
     self.scripts_dir = os.path.dirname(__file__) + '/scripts/'
     self.workstation_tag = 'cirrus_workstation'
@@ -142,7 +152,7 @@ class Manager(object):
       if keypair:
         self.ec2.delete_key_pair(self.workstation_keypair_name)
       
-      # create new key in current region
+      # create new key in current region_name
       keypair = self.ec2.create_key_pair(self.workstation_keypair_name)
       self.ssh_key = keypair.material
       # store key in s3
@@ -159,21 +169,21 @@ class Manager(object):
   
   def DistributeKeyToAllRegions(self, keypair):
     for tmp_region in self.valid_regions:
-      if tmp_region == self.region:
+      if tmp_region == self.region_name:
         continue
-      LOG(INFO, 'distributing key %s to region %s' % (keypair.name, tmp_region))
+      LOG(INFO, 'distributing key %s to region_name %s' % (keypair.name, tmp_region))
       tmp_region_ec2 = boto.ec2.connect_to_region(tmp_region, aws_access_key_id=self.iam_aws_id, aws_secret_access_key=self.iam_aws_secret)      
       try:
-        tmp_region_ec2.delete_key_pair(self.workstation_keypair_name)
+        tmp_region_ec2.delete_key_pair(keypair.name)
       except:
-        pass
+        raise
       private_key = RSA.importKey(keypair.material)
       public_key_material = PrivateToPublicOpenSSH(private_key, keypair.name)
       tmp_region_ec2.import_key_pair(keypair.name, public_key_material)
     return
     
   def Debug(self):
-    res = self.ec2.get_all_instances(instance_ids=['i-a89247c0'])
+    res = self.ec2.get_all_instances(instance_ids=['i-db6da8b4'])
     test_instance = res[0].instances[0]
     
     #print self.ssh_key

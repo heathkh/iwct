@@ -1,12 +1,11 @@
 - name: Update
   command: apt-get update
  
-# causes a hang! 
-#- name: Upgrade
-#  command: apt-get upgrade  
+- name: Upgrade
+  command: aptitude safe-upgrade -y  
 
 - name: Install x11 packages
-  apt: pkg=gnome-desktop-environment
+  apt: pkg=gnome-desktop-environment install_recommends=no
   
 - name: Run install script
   script: nomachine-setup --server --keys

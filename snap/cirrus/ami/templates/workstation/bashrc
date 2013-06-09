@@ -112,13 +112,15 @@ fi
 PATH=${PATH}:${HOME}/local/bin
 export PATH
 
-export PYTHONPATH="${HOME}/git/iwmapr2/build:${HOME}/git/iwmapr2/build/ext:"
+export PYTHONPATH="${HOME}/git/iwct/build:${HOME}/git/iwct/build/snap:"
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=cpp
 
-# Cmake TED
-export cmaketed_DIR=${HOME}/git/cmaketed/cmaketed
-# toggle between cmake tedsource and binary dirs with command 'sbs'
-alias sbs='cd `${cmaketed_DIR}/util/swap_build_src_path.py`'
+# Tell CMake about the snap extensions
+export cmakesnap_DIR=${HOME}/git/snap
+
+# Adds handy command to toggle between corresponding locations in source and
+# and build directory tree with the command 'snap-toggle'
+alias snap-toggle='cd `${cmakesnap_DIR}/internal/util/snap-toggle.py`'
 
 # Change default compiler to clang/llvm
 export CC=/usr/bin/clang

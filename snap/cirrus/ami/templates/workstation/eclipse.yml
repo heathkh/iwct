@@ -12,6 +12,7 @@
   
 - name: Create eclipse-config dir
   file: path=/home/ubuntu/workspace/.metadata/.plugins/org.eclipse.core.runtime/.settings/ owner=ubuntu group=ubuntu state=directory
+
 - name: Configure eclipse-openinterminal  
   copy: src=OpenInTerminal.prefs dest=/home/ubuntu/workspace/.metadata/.plugins/org.eclipse.core.runtime/.settings/OpenInTerminal.prefs owner=ubuntu group=ubuntu
 
