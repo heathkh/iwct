@@ -36,10 +36,10 @@ CPP_LIBRARY (
 
 SET(CMAKE_JAVA_INCLUDE_PATH "/opt/mapr/hadoop/hadoop-0.20.2/lib/hadoop-0.20.2-dev-core.jar")
 
-JAVA_LIBRARY (
-  NAME      pert
-  SOURCES   MyReducerPrefixGroupingComparator.java
-)
+#JAVA_LIBRARY (
+#  NAME      pert
+#  SOURCES   MyReducerPrefixGroupingComparator.java
+#)
 
 
 PY_LIBRARY (
