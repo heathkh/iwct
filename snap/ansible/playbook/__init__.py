@@ -266,6 +266,7 @@ class PlayBook(object):
             timeout=self.timeout, remote_user=task.play.remote_user,
             remote_port=task.play.remote_port, module_vars=task.module_vars,
             private_key_file=self.private_key_file,
+            private_key=self.private_key,
             setup_cache=self.SETUP_CACHE, basedir=task.play.basedir,
             conditional=task.only_if, callbacks=self.runner_callbacks,
             sudo=task.sudo, sudo_user=task.sudo_user,
@@ -373,6 +374,7 @@ class PlayBook(object):
             pattern=play.hosts, module_name='setup', module_args={}, inventory=self.inventory,
             forks=self.forks, module_path=self.module_path, timeout=self.timeout, remote_user=play.remote_user,
             remote_pass=self.remote_pass, remote_port=play.remote_port, private_key_file=self.private_key_file,
+            private_key=self.private_key,
             setup_cache=self.SETUP_CACHE, callbacks=self.runner_callbacks, sudo=play.sudo, sudo_user=play.sudo_user,
             transport=play.transport, sudo_pass=self.sudo_pass, is_playbook=True, module_vars=play.vars,
         ).run()

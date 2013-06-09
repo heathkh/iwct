@@ -23,7 +23,7 @@ import random
 from ansible.callbacks import vvv
 from ansible import errors
 from ansible import utils
-
+import StringIO
 # prevent paramiko warning noise -- see http://stackoverflow.com/questions/3920502/
 HAVE_PARAMIKO=False
 with warnings.catch_warnings():
@@ -82,13 +82,15 @@ class Connection(object):
             allow_agent = False
         try:
             private_key = None
+            key_filename = None
+            
             if self.runner.private_key:
-              private_key = paramiko.RSAKey.from_private_key(StringIO.StringIO(self.runner.private_key))              
+                private_key = paramiko.RSAKey.from_private_key(StringIO.StringIO(self.runner.private_key))                          
             
             if self.runner.private_key_file:
                 key_filename = os.path.expanduser(self.runner.private_key_file)
-            else:
-                key_filename = None
+                
+            
             ssh.connect(self.host, username=user, allow_agent=allow_agent, look_for_keys=True,
                 key_filename=key_filename, pkey=private_key,
                 password=self.runner.remote_pass,
