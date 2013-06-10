@@ -203,11 +203,6 @@ class Manager(object):
     self.__CreateWorkstationSecurityGroup() # ensure the security group exists
     
     # find the IAM Policy Profile 
-    
-    
-    
-    
-    
     LOG(INFO, 'Attempting to launch instance with ami: %s' % (ami.id))
     LOG(INFO, 'workstation_instance_profile_name: %s' % (workstation_instance_profile_name))
     reservation = self.ec2.run_instances(ami.id, 
@@ -356,10 +351,12 @@ class Manager(object):
     nx_key = util.ReadRemoteFile('/usr/NX/share/keys/default.id_dsa.key', instance.public_dns_name, self.ssh_key)      
     CHECK(nx_key)
     CHECK_EQ(instance.state, 'running')
-    #nx_template_filename = '%s/nxs_template.txt' % (self.scripts_dir)
-    #nx_template_file = open(nx_template_filename, 'r')
-    #CHECK(nx_template_file) 
     config_content = Template(GetNxsTemplate()).substitute({'public_dns_name' : instance.public_dns_name, 'nx_key' : nx_key})
+    
+    
+    # TODO(heathkh): Once this operation is performed at ami creatio ntime, this shouldn't be needed at login time
+    rm_nx_known_hosts = 'sudo rm /usr/NX/home/nx/.ssh/known_hosts'
+    util.RunCommandOnHost(rm_nx_known_hosts, instance.public_dns_name, self.ssh_key)
     return config_content
   
   
