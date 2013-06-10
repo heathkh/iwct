@@ -10,36 +10,6 @@ from snap.boto.ec2.connection import EC2Connection
 from snap.boto.s3.connection import S3Connection
 from snap.boto.exception import  BotoServerError
 from snap.boto.s3.key import Key
-from Crypto.PublicKey import RSA
-import base64
-
-
-
-
-def PrivateToPublicOpenSSH(key, host):
-  # Create public key.                                                                                                                                               
-  ssh_rsa = '00000007' + base64.b16encode('ssh-rsa')
-  
-  # Exponent.                                                                                                                                                        
-  exponent = '%x' % (key.e, )
-  if len(exponent) % 2:
-      exponent = '0' + exponent
-  
-  ssh_rsa += '%08x' % (len(exponent) / 2, )
-  ssh_rsa += exponent
-  
-  modulus = '%x' % (key.n, )
-  if len(modulus) % 2:
-      modulus = '0' + modulus
-  
-  if modulus[0] in '89abcdef':
-      modulus = '00' + modulus
-  
-  ssh_rsa += '%08x' % (len(modulus) / 2, )
-  ssh_rsa += modulus
-  
-  public_key = 'ssh-rsa %s %s' % (base64.b64encode(base64.b16decode(ssh_rsa.upper())), host)
-  return public_key
 
 def IsHPCInstanceType(instance_type): 
   hpc_instance_types = ['cc1.4xlarge', 'cc2.8xlarge', 'cr1.8xlarge']
@@ -76,13 +46,9 @@ def InitCirrusIAMUser(root_aws_id, root_aws_secret):
   
   policy_json = '{"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "NotAction": "iam:*", "Resource": "*"}]}'
   iam.put_user_policy(cirrus_iam_username, 'main', policy_json)
-  
-  
   response = iam.get_all_access_keys(cirrus_iam_username)
-  
   iam_id = None
   iam_secret = None
-  
   for key in response['list_access_keys_response']['list_access_keys_result']['access_key_metadata']:
     if key['status'] == 'Active' and key['user_name'] == cirrus_iam_username:
       iam_id = key['access_key_id']
@@ -113,15 +79,15 @@ def InitCirrusIAMUser(root_aws_id, root_aws_secret):
     k.key = cirrus_cred_bucket_key
     k.set_contents_from_string(iam_secret)
   return iam_id, iam_secret
-  
+ 
+
 
 class Manager(object):
-  def __init__(self, region, iam_aws_id, iam_aws_secret):
-    CHECK(region)
+  def __init__(self, region_name, iam_aws_id, iam_aws_secret):
+    CHECK(region_name)
     CHECK(iam_aws_id)
     CHECK(iam_aws_secret)
-    self.valid_regions = ['us-east-1', 'us-west-1']
-    self.region_name = region
+    self.region_name = region_name
     self.iam_aws_id = iam_aws_id
     self.iam_aws_secret = iam_aws_secret 
     #self.ec2 = boto.ec2.connect_to_region(region_name, aws_access_key_id=iam_aws_id, aws_secret_access_key=iam_aws_secret)
@@ -132,60 +98,15 @@ class Manager(object):
     self.workstation_keypair_name = 'cirrus_workstation'
     self.ssh_key = None
     self.workstation_security_group = 'cirrus_workstation'
-    
     config_bucketname = 'cirrus_workstation_config_%s' % (hashlib.md5(iam_aws_id).hexdigest())
-    config_bucket = self.s3.lookup(config_bucketname)
-      
-    # check if a keypair has been created 
-    keypair = self.ec2.get_key_pair(self.workstation_keypair_name)
-    if keypair:
-      # if created, check that private key is available in s3      
-      if not config_bucket:
-        config_bucket = self.s3.create_bucket(config_bucketname, policy='private')
-      
-      s3_key = config_bucket.lookup('ssh_key')
-      if s3_key:
-        self.ssh_key = s3_key.get_contents_as_string() 
-    
-    # if the private key is not created or not available in s3, recreate it
-    if not self.ssh_key:
-      if keypair:
-        self.ec2.delete_key_pair(self.workstation_keypair_name)
-      
-      # create new key in current region_name
-      keypair = self.ec2.create_key_pair(self.workstation_keypair_name)
-      self.ssh_key = keypair.material
-      # store key in s3
-      k = Key(config_bucket)
-      k.key = 'ssh_key'
-      k.set_contents_from_string(self.ssh_key)
-      
-      # distribute to all other regions
-      self.DistributeKeyToAllRegions(keypair)
-    return
-  
-  
-  
-  
-  def DistributeKeyToAllRegions(self, keypair):
-    for tmp_region in self.valid_regions:
-      if tmp_region == self.region_name:
-        continue
-      LOG(INFO, 'distributing key %s to region_name %s' % (keypair.name, tmp_region))
-      tmp_region_ec2 = boto.ec2.connect_to_region(tmp_region, aws_access_key_id=self.iam_aws_id, aws_secret_access_key=self.iam_aws_secret)      
-      try:
-        tmp_region_ec2.delete_key_pair(keypair.name)
-      except:
-        raise
-      private_key = RSA.importKey(keypair.material)
-      public_key_material = PrivateToPublicOpenSSH(private_key, keypair.name)
-      tmp_region_ec2.import_key_pair(keypair.name, public_key_material)
+    src_region = self.region_name
+    dst_regions = util.tested_region_names
+    self.ssh_key = util.InitKeypair(self.ec2, self.s3, config_bucketname, self.workstation_keypair_name, src_region, dst_regions, iam_aws_id, iam_aws_secret)    
     return
     
   def Debug(self):
     res = self.ec2.get_all_instances(instance_ids=['i-db6da8b4'])
     test_instance = res[0].instances[0]
-    
     #print self.ssh_key
     print test_instance.public_dns_name 
     util.WaitForHostsReachable([test_instance.public_dns_name], self.ssh_key)
@@ -220,19 +141,11 @@ class Manager(object):
     self.ec2.stop_instances([instance_id])
     return
   
+  
+  
   def CreateInstance(self, workstation_name, instance_type, ubuntu_release_name, mapr_version, ami_owner_id = '925479793144'):
-    # The image for HPC instances is different
-    virtualization_type = 'paravirtual'
-    if IsHPCInstanceType(instance_type):
-      virtualization_type = 'hvm'             
-    ami_name = 'cirrus-ubuntu-%s-%s-mapr%s-workstation' % (ubuntu_release_name, virtualization_type, mapr_version) # see ami/manager.py    
-    images = self.ec2.get_all_images(owners=[ami_owner_id])
-    ami = None
-    for image in images:
-      if image.name == ami_name:
-        ami = image
-        break
-    
+    role = 'workstation'
+    ami = LookupCirrusAmi(self.ec2, instance_type, ubuntu_release_name, mapr_version, role, ami_owner_id)
     CHECK(ami, 'Failed to find a suitable ami')
     self.__CreateWorkstationSecurityGroup() # ensure the security group exists
     LOG(INFO, 'Attempting to launch instance with ami: %s' % (ami.id))
@@ -253,7 +166,7 @@ class Manager(object):
     return
   
   def DeviceExists(self, device_name, instance):
-    exists = util.FileExists(device_name, instance.dns_name, self.config.private_key_file)
+    exists = util.FileExists(device_name, instance.dns_name, self.ssh_key)
     return exists  
 
   def ResizeRootVolumeOfInstance(self, instance_id, new_vol_size_gb):
@@ -368,7 +281,7 @@ class Manager(object):
     extra_vars = {}
     extra_vars['volume_name'] = volume.id
     extra_vars['volume_device'] = device_name
-    CHECK(self.RunPlaybookOnHost(add_ebs_volume_playbook, hostname, extra_vars))
+    CHECK(util.RunPlaybookOnHost(add_ebs_volume_playbook, hostname, self.ssh_key, extra_vars))
     return  
     
   
