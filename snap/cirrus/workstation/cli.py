@@ -20,9 +20,18 @@ class Cli(object):
     self.__LoadConfigFile()
     
     if not workstation.IAMUserReady(self.aws_id, self.aws_secret):
-      print 'No IAM user is configured, please provide your ROOT aws credentials.'
-      root_aws_id = raw_input('ROOT aws key id: ')
-      root_aws_secret = raw_input('ROOT aws key secret: ')
+      # try to get root AWS account from AWS default environment variables
+      root_aws_id = os.environ.get('AWS_ACCESS_KEY_ID')
+      root_aws_secret = os.environ.get('AWS_SECRET_ACCESS_KEY')
+      
+      # otherwise, ask the user directly
+      if not root_aws_id or not root_aws_secret:
+        print 'No IAM user is configured, please provide your ROOT aws credentials.'
+        root_aws_id = raw_input('ROOT aws key id: ')
+        root_aws_secret = raw_input('ROOT aws key secret: ')
+        
+      CHECK(root_aws_id)  
+      CHECK(root_aws_secret)
       self.aws_id, self.aws_secret = workstation.InitCirrusIAMUser(root_aws_id, root_aws_secret)    
     
     valid_regions = ['us-east-1', 'us-west-1']   

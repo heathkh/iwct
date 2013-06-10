@@ -364,7 +364,7 @@ def PrivateToPublicOpenSSH(key, host):
 
 
  
-def InitKeypair(ec2, s3, config_bucket_name, keypair_name, src_region, dst_regions):
+def InitKeypair(ec2, s3, config_bucket_name, keypair_name, src_region, dst_regions, aws_id = None, aws_secret = None):
     ssh_key = None
     # check if a keypair has been created
     config_bucket = s3.lookup(config_bucket_name) 
@@ -396,7 +396,7 @@ def InitKeypair(ec2, s3, config_bucket_name, keypair_name, src_region, dst_regio
     return ssh_key  
 
 
-def DistributeKeyToRegions(src_region, dst_regions, private_keypair, iam_aws_id = None, iam_aws_secret = None):
+def DistributeKeyToRegions(src_region, dst_regions, private_keypair, aws_id = None, aws_secret = None):
   """ keypair must be a newly created key... that is the key material is the private key not the public key."""
   private_key = RSA.importKey(private_keypair.material)
   public_key_material = PrivateToPublicOpenSSH(private_key, private_keypair.name)
@@ -404,7 +404,7 @@ def DistributeKeyToRegions(src_region, dst_regions, private_keypair, iam_aws_id 
     if dst_region == src_region:
       continue
     LOG(INFO, 'distributing key %s to region_name %s' % (private_keypair.name, dst_region))
-    dst_region_ec2 = boto.ec2.connect_to_region(dst_region, aws_access_key_id=iam_aws_id, aws_secret_access_key=iam_aws_secret)      
+    dst_region_ec2 = boto.ec2.connect_to_region(dst_region, aws_access_key_id=aws_id, aws_secret_access_key=aws_secret)      
     try:
       dst_region_ec2.delete_key_pair(private_keypair.name)
     except:

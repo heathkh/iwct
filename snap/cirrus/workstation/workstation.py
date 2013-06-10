@@ -11,6 +11,8 @@ from snap.boto.s3.connection import S3Connection
 from snap.boto.exception import  BotoServerError
 from snap.boto.s3.key import Key
 
+workstation_instance_profile_name = 'cirrus_workstation_profile'
+
 def IsHPCInstanceType(instance_type): 
   hpc_instance_types = ['cc1.4xlarge', 'cc2.8xlarge', 'cr1.8xlarge']
   return instance_type in hpc_instance_types
@@ -40,12 +42,59 @@ def InitCirrusIAMUser(root_aws_id, root_aws_secret):
   has_cirrus_user = False
   response = iam.get_all_users()  
   for user in response['list_users_response']['list_users_result']['users']:
+    LOG(INFO, 'iam user exists')
     has_cirrus_user = True                
   if not has_cirrus_user:
+    LOG(INFO, 'creating iam user')
     response = iam.create_user(cirrus_iam_username)    
+    # setup role so workstation can assume IAM credentials without additional configuration
+    # this may fail if role already exists
+    
+    LOG(INFO, 'created iam role and policy')
+    role_name = 'cirrus_workstation'      
+    power_user_policy_json = '{"Version": "2012-10-17", "Statement": [ {"Effect": "Allow", "NotAction": "iam:*", "Resource": "*"} ] }'
+    
+    # ensure no conflicting role exists with same name
+    try:
+      iam.remove_role_from_instance_profile(workstation_instance_profile_name, role_name)
+    except:
+      pass
+    
+    try:  
+      iam.delete_instance_profile(workstation_instance_profile_name)
+    except:
+      pass
+    
+    response = iam.list_role_policies(role_name)
+    role_policy_names = response['list_role_policies_response']['list_role_policies_result']['policy_names']
+    for role_policy_name in role_policy_names:
+      iam.delete_role_policy(role_name, role_policy_name)
+    
+    try:
+      iam.delete_role(role_name)
+    except:
+      raise
+    
+    iam.create_instance_profile(workstation_instance_profile_name)
+    
+    workstation_role_arn = None
+    try:    
+      response = iam.create_role(role_name)
+      workstation_role_arn = response['create_role_response']['create_role_result']['role']['arn']
+    except:
+      pass
+    
+    CHECK(workstation_role_arn)
+    iam.add_role_to_instance_profile(workstation_instance_profile_name, role_name)
+    iam.put_role_policy(role_name, 'power_user_policy', power_user_policy_json)
+    
+    # update iam user to have right to launch instances with the cirrus_workstatio_role    
+    policy_json = '{"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action":"iam:PassRole", "Resource": "%s"}]}' % (workstation_role_arn)
+    iam.put_user_policy(cirrus_iam_username, 'assume_cirrus_workstation_role', policy_json)
+        
   
   policy_json = '{"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "NotAction": "iam:*", "Resource": "*"}]}'
-  iam.put_user_policy(cirrus_iam_username, 'main', policy_json)
+  iam.put_user_policy(cirrus_iam_username, 'power_user_policy', policy_json)
   response = iam.get_all_access_keys(cirrus_iam_username)
   iam_id = None
   iam_secret = None
@@ -72,12 +121,16 @@ def InitCirrusIAMUser(root_aws_id, root_aws_secret):
     response = iam.create_access_key(cirrus_iam_username)
     new_key = response['create_access_key_response']['create_access_key_result']['access_key']
     iam_id = new_key['access_key_id']
+    CHECK(iam_id)
     iam_secret = new_key['secret_access_key']
     cirrus_cred_bucket_key = 'cirrus_iam_sec_%s' % (hashlib.md5(iam_id).hexdigest())
     #store secret in s3 for future use 
     k = Key(cred_bucket)
     k.key = cirrus_cred_bucket_key
     k.set_contents_from_string(iam_secret)
+    
+  
+  
   return iam_id, iam_secret
  
 
@@ -145,17 +198,26 @@ class Manager(object):
   
   def CreateInstance(self, workstation_name, instance_type, ubuntu_release_name, mapr_version, ami_owner_id = '925479793144'):
     role = 'workstation'
-    ami = LookupCirrusAmi(self.ec2, instance_type, ubuntu_release_name, mapr_version, role, ami_owner_id)
+    ami = util.LookupCirrusAmi(self.ec2, instance_type, ubuntu_release_name, mapr_version, role, ami_owner_id)
     CHECK(ami, 'Failed to find a suitable ami')
     self.__CreateWorkstationSecurityGroup() # ensure the security group exists
+    
+    # find the IAM Policy Profile 
+    
+    
+    
+    
+    
     LOG(INFO, 'Attempting to launch instance with ami: %s' % (ami.id))
+    LOG(INFO, 'workstation_instance_profile_name: %s' % (workstation_instance_profile_name))
     reservation = self.ec2.run_instances(ami.id, 
                            key_name = self.workstation_keypair_name,
                            security_groups = [self.workstation_security_group],
                            instance_type = instance_type,
                            #placement = prefered_availability_zone,
                            disable_api_termination = True,
-                           instance_initiated_shutdown_behavior = 'stop'                           
+                           instance_initiated_shutdown_behavior = 'stop',   
+                           instance_profile_name = workstation_instance_profile_name # IAM instance profile to associate with the instance                                            
                            )
     CHECK_EQ(len(reservation.instances), 1)
     instance = reservation.instances[0]
