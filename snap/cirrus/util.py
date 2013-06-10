@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-from snap.boto import ec2
+from snap import boto
 from snap.boto import exception
 from snap.boto.ec2 import connection
 from snap.pyglog import *
@@ -20,6 +20,10 @@ import tempfile
 import paramiko
 import StringIO
 
+from Crypto.PublicKey import RSA
+import base64
+from snap.boto.s3.key import Key
+
 ################################################################################
 # Ansible Helpers    
 ################################################################################
@@ -30,6 +34,9 @@ from snap.ansible import playbook
 from snap.ansible import utils
 from snap.ansible import inventory
 from snap.ansible.utils import plugins
+
+tested_region_names = ['us-east-1', 'us-west-1']
+valid_instance_roles = ['workstation', 'master', 'worker']
 
 def RunPlaybookOnHost(playbook_path, host, private_key, extra_vars = None):
   inventory = ansible.inventory.Inventory([host])
@@ -298,8 +305,22 @@ def WaitForHostsReachable(hostnames, ssh_key):
 # EC2 Helpers    
 ################################################################################
 
+def LookupCirrusAmi(ec2, instance_type, ubuntu_release_name, mapr_version, role, ami_owner_id = '925479793144'):
+  CHECK(role in valid_instance_roles)
+  virtualization_type = 'paravirtual'
+  if IsHPCInstanceType(instance_type):
+    virtualization_type = 'hvm'             
+  ami_name = 'cirrus-ubuntu-%s-%s-mapr%s-%s' % (ubuntu_release_name, virtualization_type, mapr_version, role) # see ami/manager.py    
+  images = ec2.get_all_images(owners=[ami_owner_id])
+  ami = None
+  for image in images:
+    if image.name == ami_name:
+      ami = image
+      break
+  return ami
+
 def GetRegion(region_name):
-  regions = ec2.regions()
+  regions = boto.ec2.regions()
   region = None
   valid_region_names = []
   for r in regions:
@@ -313,6 +334,83 @@ def GetRegion(region_name):
     LOG(INFO, 'Try one of these:\n %s' % ( '\n'.join(valid_region_names)))
     CHECK(False)
   return  region
+
+
+def PrivateToPublicOpenSSH(key, host):
+  # Create public key.                                                                                                                                               
+  ssh_rsa = '00000007' + base64.b16encode('ssh-rsa')
+  
+  # Exponent.                                                                                                                                                        
+  exponent = '%x' % (key.e, )
+  if len(exponent) % 2:
+      exponent = '0' + exponent
+  
+  ssh_rsa += '%08x' % (len(exponent) / 2, )
+  ssh_rsa += exponent
+  
+  modulus = '%x' % (key.n, )
+  if len(modulus) % 2:
+      modulus = '0' + modulus
+  
+  if modulus[0] in '89abcdef':
+      modulus = '00' + modulus
+  
+  ssh_rsa += '%08x' % (len(modulus) / 2, )
+  ssh_rsa += modulus
+  
+  public_key = 'ssh-rsa %s %s' % (base64.b64encode(base64.b16decode(ssh_rsa.upper())), host)
+  return public_key
+
+
+
+ 
+def InitKeypair(ec2, s3, config_bucket_name, keypair_name, src_region, dst_regions):
+    ssh_key = None
+    # check if a keypair has been created
+    config_bucket = s3.lookup(config_bucket_name) 
+    keypair = ec2.get_key_pair(keypair_name)
+    if keypair:
+      # if created, check that private key is available in s3      
+      if not config_bucket:
+        config_bucket = s3.create_bucket(config_bucket_name, policy='private')
+      
+      s3_key = config_bucket.lookup('ssh_key')
+      if s3_key:
+        ssh_key = s3_key.get_contents_as_string() 
+    
+    # if the private key is not created or not available in s3, recreate it
+    if not ssh_key:
+      if keypair:
+        ec2.delete_key_pair(keypair_name)
+      
+      # create new key in current region_name
+      private_keypair = ec2.create_key_pair(keypair_name)
+      ssh_key = private_keypair.material
+      # store key in s3
+      k = Key(config_bucket)
+      k.key = 'ssh_key'
+      k.set_contents_from_string(ssh_key)
+      DistributeKeyToRegions(src_region, dst_regions, private_keypair)
+    CHECK(keypair)  
+    CHECK(ssh_key)
+    return ssh_key  
+
+
+def DistributeKeyToRegions(src_region, dst_regions, private_keypair, iam_aws_id = None, iam_aws_secret = None):
+  """ keypair must be a newly created key... that is the key material is the private key not the public key."""
+  private_key = RSA.importKey(private_keypair.material)
+  public_key_material = PrivateToPublicOpenSSH(private_key, private_keypair.name)
+  for dst_region in dst_regions:
+    if dst_region == src_region:
+      continue
+    LOG(INFO, 'distributing key %s to region_name %s' % (private_keypair.name, dst_region))
+    dst_region_ec2 = boto.ec2.connect_to_region(dst_region, aws_access_key_id=iam_aws_id, aws_secret_access_key=iam_aws_secret)      
+    try:
+      dst_region_ec2.delete_key_pair(private_keypair.name)
+    except:
+      raise      
+    dst_region_ec2.import_key_pair(private_keypair.name, public_key_material)
+  return
 
 
 def WaitForVolume(volume, desired_state):
