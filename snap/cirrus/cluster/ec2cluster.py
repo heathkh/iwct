@@ -66,21 +66,17 @@ class Ec2Cluster():
   name and the instance's role, e.g. <cluster-name>-<role>
   """
 
-  def __init__(self, name, aws_access_key_id, aws_secret_access_key, region_name):    
+  def __init__(self, name, region_name, aws_access_key_id = None, aws_secret_access_key = None):    
     #super(Ec2Cluster, self).__init__()
     self._name = name
-    
     regions = boto.ec2.regions()
-    
     region = None
     for r in regions:
       if r.name == region_name:
         region = r 
         break
-      
     if not region:
       LOG(FATAL, 'invalid region name: %s' % region_name)  
-            
     self._ec2Connection = EC2Connection(aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key, region=region)
     return
 

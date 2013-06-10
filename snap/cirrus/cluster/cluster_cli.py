@@ -1,7 +1,7 @@
 #!/usr/bin/python
 import sys
-from cirrus.cluster import mapr
-from cirrus import config
+from snap.cirrus.cluster import mapr
+from snap.cirrus import config
 from snap.pyglog import *
 
 def main(argv):
