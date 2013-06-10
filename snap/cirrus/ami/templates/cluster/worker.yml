@@ -1,0 +1,19 @@
+---
+- hosts: all
+  sudo: yes         
+  tasks:
+    - name: Install mapr for worker configuration using bash script
+      script: install_mapr.sh -P mapr-tasktracker,mapr-fileserver
+      ignore_errors: yes
+      
+    - name: Install ganglia packages 
+      apt: pkg=$item update_cache=yes
+      with_items:
+         - ntp
+         - ganglia-monitor
+         - sysvinit-utils         
+      
+    - name: Set ganglia service to start on boot
+      service: name=ganglia-monitor state=restarted enabled=yes pattern=ganglia-monitor  # pattern needed since the init script doesn't support status option
+        
+    - include: common.yml

@@ -1,0 +1,31 @@
+---
+- hosts: all
+  sudo: yes         
+  tasks:
+    - name: Install mapr for master configuration using bash script
+      script: install_mapr.sh -P mapr-cldb,mapr-jobtracker,mapr-webserver,mapr-zookeeper,mapr-nfs
+      ignore_errors: yes
+      
+    - name: Install ganglia packages 
+      apt: pkg=$item update_cache=yes
+      with_items:
+         - ntp
+         - apache2
+         - ganglia-monitor
+         - ganglia-webfrontend
+         - gmetad
+         - sysvinit-utils         
+         
+    - name: Configure ganglia
+      file: src=/etc/ganglia-webfrontend/apache.conf dest=/etc/apache2/sites-enabled/ganglia state=link owner=root group=root     
+      
+    - name: Set apache to start on boot
+      service: name=apache2 state=restarted enabled=yes 
+      
+    - name: Set ganglia gmetad to start on boot 
+      service: name=gmetad state=restarted enabled=yes pattern=gmetad # pattern needed since the init script doesn't support status option
+      
+    - name: Set ganglia service to start on boot
+      service: name=ganglia-monitor state=restarted enabled=yes pattern=ganglia-monitor  # pattern needed since the init script doesn't support status option
+        
+    - include: common.yml

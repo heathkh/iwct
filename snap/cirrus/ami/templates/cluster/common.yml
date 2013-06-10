@@ -1,0 +1,22 @@
+# Tweaks to default limits: http://www.ubun2.com/question/433/how_set_ulimit_ubuntu_linux_getting_sudo_ulimit_command_not_found_error  
+- name: Fix the soft file limit for root user
+  lineinfile: dest=/etc/security/limits.conf regexp="^$item soft nofile 64000" line="$item soft nofile 64000"
+  with_items:
+    - root
+    - ubuntu  
+
+- name: Fix the hard file limit for root user
+  lineinfile: dest=/etc/security/limits.conf regexp="^$item hard nofile 64000" line="$item hard nofile 64000" 
+  with_items:
+    - root
+    - ubuntu 
+  
+- name: Turn on pam limits so above changes take effect
+  lineinfile: dest=/etc/pam.d/common-session regexp="^session required pam_limits.so" line="session required pam_limits.so"
+
+# Install snappy
+- name: Install snappy
+  apt: pkg=libsnappy1
+  
+- name: Setup hadoop to find snappy
+  file: src=/usr/lib/libsnappy.so.1 dest=/opt/mapr/hadoop/hadoop-0.20.2/lib/native/Linux-amd64-64/libsnappy.so state=link owner=root group=root

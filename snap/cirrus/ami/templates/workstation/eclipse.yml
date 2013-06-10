@@ -47,7 +47,14 @@
 #-Xms512m
 #-Xmx1024m
 
+# For some reason, the workspace dir is created with root owner... need to fix this
+#- name: Change owner of ~/.workspace
+- name: Change owner of ~/.workspace
+  command: sudo chown -R ubuntu:ubuntu workspace/  
 
+  
+  
+  
 
 
 

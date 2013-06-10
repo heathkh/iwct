@@ -53,7 +53,6 @@ class AmiMaker(object):
     return
   
   def Run(self):
-    
     template_instance = None
     res = self.ec2.get_all_instances(filters={'tag-key': 'spec', 'tag-value' : self.ami_spec.ami_name, 'instance-state-name' : 'running'})
     
@@ -68,6 +67,8 @@ class AmiMaker(object):
       template_instance = self.__CreateTemplateInstance()
       template_instance.add_tag('spec', self.ami_spec.ami_name)
       
+      
+    CHECK(template_instance)  
     if self.ami_spec.role == 'workstation':
       self.__ConfigureAsWorkstation(template_instance)
     elif self.ami_spec.role == 'master':
@@ -81,10 +82,15 @@ class AmiMaker(object):
     
     self.__SecurityScrub(template_instance)
     
+    ami_id = None
     if self.ami_spec.root_store_type == 'ebs':  
-      self.__CreateEbsAmi(template_instance)
+      ami_id = self.__CreateEbsAmi(template_instance)
     else:
-      CHECK(False)
+      LOG(FATAL, 'Support for creating instance-store backed images has been disabled in this version because it required much greater complexity.')
+      
+    #self.__SetImagePermissions(ami_id)
+    #self.__DistributeImageToAllRegions(ami_id)
+      
     print 'terminating template instance'
     self.ec2.terminate_instances(instance_ids=[template_instance.id])
     util.WaitForInstanceTerminated(template_instance)    
@@ -109,48 +115,37 @@ class AmiMaker(object):
     util.WaitForHostsReachable([instance.public_dns_name], self.ssh_key)    
     return instance
   
-  
   def __ConfigureAsWorkstation(self, instance):
-    CHECK(instance)
-    hostname = instance.dns_name
-    config_workstation_playbook = os.path.dirname(__file__) + '/templates/workstation/workstation.yml'
+    LOG(INFO, 'Configuring a workstation...')
+    playbook = os.path.dirname(__file__) + '/templates/workstation/workstation.yml'
     extra_vars = {'mapr_version' : self.ami_spec.mapr_version}
-    CHECK(util.RunPlaybookOnHost(config_workstation_playbook, hostname, self.ssh_key, extra_vars = extra_vars))
+    CHECK(util.RunPlaybookOnHost(playbook, instance.dns_name, self.ssh_key, extra_vars = extra_vars))
     return
   
-  
   def __ConfigureAsClusterMaster(self, instance):
-    LOG(INFO, 'Configuring a cluster master...')
-    base = os.path.dirname(__file__) + '/templates/cluster/' 
-    args = "-P mapr-cldb,mapr-jobtracker,mapr-webserver,mapr-zookeeper,mapr-nfs"
-    util.RunScriptOnHost(base + 'install_mapr.sh', args, instance.dns_name, self.ssh_key)
-    CHECK(util.RunScriptOnHost(base + 'install_extra.sh', '', instance.dns_name, self.ssh_key))
-    CHECK(util.RunScriptOnHost(base + 'install_extra_master.sh', '', instance.dns_name, self.ssh_key))
+    LOG(INFO, 'Configuring a cluster master...')    
+    playbook = os.path.dirname(__file__) + '/templates/cluster/master.yml'
+    extra_vars = {'mapr_version' : self.ami_spec.mapr_version}
+    CHECK(util.RunPlaybookOnHost(playbook, instance.dns_name, self.ssh_key, extra_vars = extra_vars))
     return
   
   def __ConfigureAsClusterWorker(self, instance):
     LOG(INFO, 'Configuring a cluster worker...')  
-    base = os.path.dirname(__file__) + '/templates/cluster/'    
-    args = "-P mapr-tasktracker,mapr-fileserver"
-    util.RunScriptOnHost(base + 'install_mapr.sh', args, instance.dns_name, self.ssh_key)
-    CHECK(util.RunScriptOnHost(base + 'install_extra.sh', '', instance.dns_name, self.ssh_key))
-    CHECK(util.RunScriptOnHost(base + 'install_extra_worker.sh', '', instance.dns_name, self.ssh_key))
+    playbook = os.path.dirname(__file__) + '/templates/cluster/worker.yml'
+    extra_vars = {'mapr_version' : self.ami_spec.mapr_version}
+    CHECK(util.RunPlaybookOnHost(playbook, instance.dns_name, self.ssh_key, extra_vars = extra_vars))
     return
    
   def __SecurityScrub(self, instance):
-    
+    # delete the shell history 
+    CHECK(util.RunCommandOnHost('sudo find /root/.*history /home/*/.*history -exec rm -f {} \;', instance.dns_name, self.ssh_key))
+    # Clear nx cache of known hosts, otherwise first login fails until this is cleared
+    util.RunCommandOnHost('sudo rm /usr/NX/home/nx/.ssh/known_hosts', instance.dns_name, self.ssh_key)
     # Only run this right before you create the ami
     # After you do this, you can't make a new connection because key pair is gone!
-    CHECK(util.RunCommandOnHost('rm -rf /home/ubuntu/.ssh/authorized_keys*', instance.dns_name, self.ssh_key))
-    
-    # force the ubuntu user to change password on first login
-    CHECK(util.RunCommandOnHost('sudo chage -d 0 ubuntu', instance.dns_name, self.ssh_key))
-    
-    
-    
+    CHECK(util.RunCommandOnHost('sudo find / -name "authorized_keys" -exec rm -f {} \;', instance.dns_name, self.ssh_key))
     return
      
-   
   def __CreateEbsAmi(self, instance):    
     # details here: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/creating-an-ami-ebs.html
     # step 1: stop the instance so it is in a consistent state
@@ -159,8 +154,15 @@ class AmiMaker(object):
     util.WaitForInstanceStopped(instance)
     LOG(INFO, 'instance stopped... ready to create image: %s' % (instance.id))
     ami_description = self.ami_spec.ami_name
-    new_ami_image_id = self.ec2.create_image(instance.id, self.ami_spec.ami_name, ami_description)
-    LOG(INFO, 'new ami: %s' % (new_ami_image_id))
+    new_ami_id = self.ec2.create_image(instance.id, self.ami_spec.ami_name, ami_description)
+    LOG(INFO, 'new ami: %s' % (new_ami_id))
+    return new_ami_id
+  
+  def __SetImagePermissions(self, ami_id):
+    new_images = self.ec2.get_all_images(image_ids=[ami_id])
+    CHECK(len(new_images), 1)
+    new_image = new_images[0]    
+    new_image.set_launch_permissions(group_names=['all'])
     return    
       
   def __CreateSshSecurityGroup(self):

@@ -2,6 +2,7 @@
   apt: pkg=$item update_cache=yes
   with_items:
      - clang
+     - g++
      - cmake
      - cmake-qt-gui
      - cmake-curses-gui
