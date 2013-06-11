@@ -121,6 +121,10 @@ class AmiMaker(object):
     playbook = os.path.dirname(__file__) + '/templates/workstation/workstation.yml'
     extra_vars = {'mapr_version' : self.ami_spec.mapr_version}
     CHECK(util.RunPlaybookOnHost(playbook, instance.dns_name, self.ssh_key, extra_vars = extra_vars))
+    
+    nx_client_ssh_key = util.ReadRemoteFile('/usr/NX/share/keys/default.id_dsa.key', instance.dns_name, self.ssh_key)    
+    print 'To connect with NX Client, you must paste this key into the gui advanced settings config.'
+    print nx_client_ssh_key
     return
   
   def __ConfigureAsClusterMaster(self, instance):

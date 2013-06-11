@@ -7,9 +7,9 @@ import os
 from snap.pyglog import *
 
 def main():
-  #role = 'workstation'
+  role = 'workstation'
   #role = 'master'
-  role = 'worker'
+  #role = 'worker'
   #virt_type = 'hvm'
   virt_type = 'pv'
   region_name = 'us-east-1'
@@ -25,7 +25,7 @@ def main():
   ec2 = EC2Connection(region = util.GetRegion(region_name))
   ami_spec = manager.AmiSpecification(region_name, instance_type, ubuntu_release_name, mapr_version, role)
   
-  keypair_name = 'cirrus_ami_maker_tmp_1'
+  keypair_name = 'cirrus_ami_maker'
   key_dir_path = os.path.expanduser('~/ec2/')
   private_key_filename = '%s/%s.pem' % (key_dir_path, keypair_name)
   if not os.path.exists(key_dir_path):
