@@ -9,7 +9,7 @@
   
 - name: Run install script
   script: nomachine-setup --server --keys
-  #Notes: This updates the NX key here: /usr/share/NX/keys/default.id_dsa.key
+  #Notes: This updates the NX key here: /usr/NX/share/keys/default.id_dsa.key
   
 - name: Tell ubuntu to use 2d gnome instead of unity (not compatible with nx)
   lineinfile: dest=/usr/NX/etc/node.cfg regexp="^COMMAND_START_GNOME" line="COMMAND_START_GNOME=\"gnome-session --session=gnome-classic\""

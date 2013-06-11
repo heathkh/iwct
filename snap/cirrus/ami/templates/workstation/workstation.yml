@@ -1,5 +1,6 @@
 ---
 - hosts: all
+  user: ubuntu
   sudo: yes
   vars_prompt:
     - name: "ubuntu_password"

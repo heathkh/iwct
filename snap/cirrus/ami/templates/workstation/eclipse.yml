@@ -6,18 +6,23 @@
 
 - name: Install eclipse-cmakeed
   command: eclipse -nosplash -application org.eclipse.equinox.p2.director -repository http://download.eclipse.org/releases/indigo/,http://cmakeed.sourceforge.net/eclipse/ -installIU com.cthing.cmakeed.feature.feature.group
+  sudo: no
   
 - name: Install eclipse-openinterminal
   command: eclipse -nosplash -application org.eclipse.equinox.p2.director -repository http://download.eclipse.org/releases/indigo/,http://eclipse-openinterminal.googlecode.com/svn/trunk/site/ -installIU OpenInTerminal.feature.group
+  sudo: no
   
 - name: Create eclipse-config dir
   file: path=/home/ubuntu/workspace/.metadata/.plugins/org.eclipse.core.runtime/.settings/ owner=ubuntu group=ubuntu state=directory
+  sudo: no
 
 - name: Configure eclipse-openinterminal  
   copy: src=OpenInTerminal.prefs dest=/home/ubuntu/workspace/.metadata/.plugins/org.eclipse.core.runtime/.settings/OpenInTerminal.prefs owner=ubuntu group=ubuntu
+  sudo: no
 
 - name: Install eclipse-protobuf
   command: eclipse -nosplash -application org.eclipse.equinox.p2.director -repository http://download.eclipse.org/releases/indigo/,http://download.eclipse.org/modeling/tmf/xtext/updates/composite/releases/,http://protobuf-dt.googlecode.com/git/update-site -installIU com.google.eclipse.protobuf.feature.group
+  sudo: no
  
 - name: Install pexpect (requried for scripts in next stage)
   apt: pkg=python-pexpect 
@@ -27,20 +32,25 @@
   
 - name: Install eclipse-pydev
   command: eclipse -nosplash -application org.eclipse.equinox.p2.director -repository http://download.eclipse.org/releases/indigo/,http://pydev.org/updates/ -installIU org.python.pydev.feature.feature.group
+  sudo: no
 
 - name: Install eclipse-yaml
   command: eclipse -nosplash -application org.eclipse.equinox.p2.director -repository http://download.eclipse.org/releases/indigo/,http://dadacoalition.org/yedit -installIU org.dadacoalition.yedit.feature.group
+  sudo: no
 
 - name: Install eclipse-shelled
   command: eclipse -nosplash -application org.eclipse.equinox.p2.director -repository http://download.eclipse.org/releases/indigo/,http://download.eclipse.org/technology/dltk/updates-dev/4.0-nightly/,https://downloads.sourceforge.net/project/shelled/shelled/ShellEd%202.0.2/update -installIU net.sourceforge.shelled.feature.group
+  sudo: no
 
 - name: Install eclipse-webpageeditor
   command: eclipse -nosplash -application org.eclipse.equinox.p2.director -repository http://download.eclipse.org/releases/indigo/ -installIU org.eclipse.jst.webpageeditor.feature.feature.group
+  sudo: no
   #TODO(kheath): this plugin is better, but needs direct install http://amateras.sourceforge.jp/cgi-bin/fswiki_en/wiki.cgi?page=EclipseHTMLEditor
   # from here http://sourceforge.jp/frs/redir.php?m=jaist&f=%2Famateras%2F57710%2Ftk.eclipse.plugin.htmleditor_2.2.0.jar
 
 - name: Install eclipse-sortit
   command: eclipse -nosplash -application org.eclipse.equinox.p2.director -repository http://www.stateofflow.com/UpdateSite/ -installIU com.teaminabox.eclipse.sortit.feature.feature.group
+  sudo: no
 
 # TODO, patch eclipse ini with larger default memory so cdt indexer doesn't choke on large c++ projects
 # /usr/lib/eclipse/eclipse.ini
