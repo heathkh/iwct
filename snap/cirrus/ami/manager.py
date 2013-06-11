@@ -19,9 +19,9 @@ class AmiSpecification(object):
     self.mapr_version = mapr_version
     self.role = role        
     self.root_store_type, self.virtualization_type = util.GetRootStoreAndVirtualizationType(self.instance_type)
-    # force all workstations to be ebs type... you want persistence for the workstation
-    if role == 'workstation':
-      self.root_store_type = 'ebs'
+    
+    # currently only have tools to create ebs backed amis... 
+    self.root_store_type = 'ebs'
   
     self.ami_name = 'cirrus-ubuntu-%s-%s-mapr%s-%s' % (self.ubuntu_release_name, self.virtualization_type, self.mapr_version, self.role)
     return
@@ -86,7 +86,8 @@ class AmiMaker(object):
     if self.ami_spec.root_store_type == 'ebs':  
       ami_id = self.__CreateEbsAmi(template_instance)
     else:
-      LOG(FATAL, 'Support for creating instance-store backed images has been disabled in this version because it required much greater complexity.')
+      LOG(INFO, 'Support for creating instance-store backed images has been disabled in this version because it required much greater complexity.')
+      ami_id = self.__CreateEbsAmi(template_instance)
       
     #self.__SetImagePermissions(ami_id)
     #self.__DistributeImageToAllRegions(ami_id)

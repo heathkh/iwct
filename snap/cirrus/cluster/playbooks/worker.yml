@@ -1,0 +1,18 @@
+---
+- hosts: all
+  gather_facts: False # With facts stage enabled, there is too much info returned and python throws error... 
+  sudo: yes         
+  tasks:
+    - name: Allow shared key ssh from master to worker
+      authorized_key: user=root key="$master_pub_key"
+  
+    - name: Start MapR services
+      script: start_node -n $master_ip -z $master_ip > /dev/null 2>&1
+  
+    - name: install gmond.conf
+      template: src=gmond.conf.j2 dest=/etc/ganglia/gmetad.conf owner=root group=root
+    
+    - name: Restart ganglia service
+      service: name=ganglia-monitor state=restarted pattern=ganglia-monitor  # pattern needed since the init script doesn't support status option
+      
+    

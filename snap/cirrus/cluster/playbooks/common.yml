@@ -1,0 +1,5 @@
+# enable root user
+#- name: Generate key for root
+#  user: name=root generate_ssh_key=yes     
+    
+    

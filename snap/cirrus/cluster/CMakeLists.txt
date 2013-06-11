@@ -1,9 +1,10 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
 PY_LIBRARY(
-  NAME      ec2cluster
+  NAME      cluster
   SOURCES   ec2cluster.py                               
-            mapr.py                                  
+            mapr.py      
+            config.py                            
 )
 
-ADD_SUBDIRECTORY(scripts)
+ADD_SUBDIRECTORY(playbooks)

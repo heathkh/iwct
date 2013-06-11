@@ -10,7 +10,8 @@ def main():
   #role = 'workstation'
   #role = 'master'
   role = 'worker'
-  virt_type = 'hvm'
+  #virt_type = 'hvm'
+  virt_type = 'pv'
   region_name = 'us-east-1'
   ubuntu_release_name = 'precise'
   mapr_version = 'v2.1.3'
@@ -23,11 +24,13 @@ def main():
   CHECK(instance_type)
   ec2 = EC2Connection(region = util.GetRegion(region_name))
   ami_spec = manager.AmiSpecification(region_name, instance_type, ubuntu_release_name, mapr_version, role)
-  keypair_name = 'cirrus_ami_maker'
+  
+  keypair_name = 'cirrus_ami_maker_tmp_1'
   key_dir_path = os.path.expanduser('~/ec2/')
+  private_key_filename = '%s/%s.pem' % (key_dir_path, keypair_name)
   if not os.path.exists(key_dir_path):
     os.mkdir(key_dir_path)
-  private_key_filename = '%s/%s.pem' % (key_dir_path, keypair_name)
+  
   try:
     keypair = ec2.create_key_pair(keypair_name)
     keypair.save(key_dir_path)

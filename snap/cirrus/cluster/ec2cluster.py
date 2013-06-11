@@ -172,23 +172,32 @@ class Ec2Cluster():
  
   def wait_for_instances(self, instance_ids, timeout=600):
     start_time = time.time()
+    
     while True:
-      instances = self._ec2Connection.get_all_instances(instance_ids)
+      reservation = self._ec2Connection.get_all_instances(instance_ids)
       if (time.time() - start_time >= timeout):
         raise TimeoutException()
       try:
-        if self._all_started(instances):
+        if self._all_started(reservation):
           break
       # don't timeout for race condition where instance is not yet registered
       except EC2ResponseError:
         pass
       
-      num_started = self._number_instances_in_state(instances, "running")
-      num_pending = self._number_instances_in_state(instances, "pending")
-      print 'started: %d pending: %d' % (num_started, num_pending) 
-      
+      num_started = self._number_instances_in_state(reservation, "running")
+      num_pending = self._number_instances_in_state(reservation, "pending")
+      print 'started: %d pending: %d' % (num_started, num_pending)       
       time.sleep(15)
-    return
+    
+    instances = []
+    for reservation in self._ec2Connection.get_all_instances(instance_ids):
+      for instance in reservation.instances:      
+        CHECK(instance.id)
+        CHECK(len(instance.dns_name) > 4)
+        CHECK(len(instance.private_dns_name) > 4)
+        CHECK(len(instance.private_ip_address) > 4)
+        instances.append(Instance(instance.id, instance.dns_name, instance.private_dns_name, instance.private_ip_address))
+    return instances
     
     
   def CreateBlockDeviceMapForInstanceType(self, image_id, instance_type):
@@ -208,6 +217,43 @@ class Ec2Cluster():
       for i, device_name in enumerate(ephemeral_device_names):
         block_device_map[device_name] = boto.ec2.blockdevicemapping.BlockDeviceType(ephemeral_name = 'ephemeral%d' % (i))
       return block_device_map  
+    
+  
+  def launch_and_wait_for_demand_instances(self, role, image_id, instance_type, private_key_name, number_zone_list):
+    self._check_role_name(role)  
+    self._create_security_groups(role)
+    security_groups = self._get_group_names([role])    
+    spot_instance_request_ids = []
+    
+    # placement_group compatible only for HPC class instances
+    placement_group = None
+    if util.IsHPCInstanceType(instance_type):    
+      placement_group = self.get_cluster_placement_group() 
+    
+    instance_ids = []  
+    for number, availability_zone in number_zone_list:
+      print 'request: %d in %s' % (number, availability_zone)
+      if number == 0:
+        continue
+      
+      block_device_map = self.CreateBlockDeviceMapForInstanceType(image_id, instance_type)
+      
+      reservation = self._ec2Connection.run_instances(image_id,
+                                                      min_count=number,
+                                                      max_count=number,
+                                                      key_name=private_key_name,
+                                                      security_groups=security_groups,
+                                                      user_data=None,
+                                                      instance_type=instance_type,                                                      
+                                                      placement=availability_zone,
+                                                      placement_group = placement_group,
+                                                      block_device_map = block_device_map
+                                                      )      
+      ids = [instance.id for instance in reservation.instances]
+      instance_ids.extend(ids)      
+      
+    instances = self.wait_for_instances(instance_ids)
+    return instances
     
     
   def launch_and_wait_for_spot_instances(self, price, role, image_id, instance_type, private_key_name, number_zone_list):    
@@ -388,18 +434,31 @@ class Ec2Cluster():
     #self._delete_security_groups()
     return
   
+#   def get_cluster_placement_group(self):
+#     """
+#     Return the placement group, create it if it doesn't yet exist. (needed for cluster type instances).
+#     """
+#     placement_group_name = 'pg-%s' % (self._name)
+#     matching_placement_groups = self._ec2Connection.get_all_placement_groups(groupnames=[placement_group_name])
+#     placement_group = None
+#     if matching_placement_groups:
+#       CHECK_EQ(len(matching_placement_groups), 1)
+#       placement_group = matching_placement_groups[0] 
+#     else:
+#        CHECK(self._ec2Connection.create_placement_group(placement_group_name, strategy = 'cluster'), 'could not create placement group: %s' % (placement_group_name) )     
+#     return placement_group_name
+
   def get_cluster_placement_group(self):
     """
     Return the placement group, create it if it doesn't yet exist. (needed for cluster type instances).
     """
     placement_group_name = 'pg-%s' % (self._name)
-    matching_placement_groups = self._ec2Connection.get_all_placement_groups(groupnames=[placement_group_name])
-    placement_group = None
-    if matching_placement_groups:
-      CHECK_EQ(len(matching_placement_groups), 1)
-      placement_group = matching_placement_groups[0] 
-    else:
-       CHECK(self._ec2Connection.create_placement_group(placement_group_name, strategy = 'cluster'), 'could not create placement group: %s' % (placement_group_name) )     
+    
+    try:
+      self._ec2Connection.create_placement_group(placement_group_name, strategy = 'cluster'), 'could not create placement group: %s' % (placement_group_name)
+    except:
+      pass
+        
     return placement_group_name
     
 
@@ -509,7 +568,7 @@ class Ec2Cluster():
       str(instance.launch_time), instance.placement))
 
   
-  def _all_started(self, reservations):
+  def _all_started(self, reservations):    
     for res in reservations:
       for instance in res.instances:
         if instance.state != "running":

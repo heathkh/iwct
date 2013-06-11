@@ -1,15 +1,14 @@
 #!/usr/bin/python
 import sys
 from snap.cirrus.cluster import mapr
-from snap.cirrus import config
+from snap.cirrus.cluster import config
 from snap.pyglog import *
 
 def main(argv):
   
   if (len(sys.argv) < 2):    
-    print 'Usage: create <num_instances> \n  resize <num_instance> \n destroy \n push_config \n reset \n config_client \n config_lazy \n cluster_ui_urls' 
+    print 'Usage:\n create <num_instances> \n resize <num_instance> \n destroy \n push_config \n reset \n config_client \n config_lazy \n cluster_ui_urls' 
     return 1
-        
   cmd = sys.argv[1]  
   cluster = mapr.MaprCluster(config.GetConfiguration())
     

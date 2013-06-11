@@ -149,8 +149,7 @@ class Manager(object):
     self.scripts_dir = os.path.dirname(__file__) + '/scripts/'
     self.workstation_tag = 'cirrus_workstation'
     self.workstation_keypair_name = 'cirrus_workstation'
-    self.ssh_key = None
-    self.workstation_security_group = 'cirrus_workstation'
+    self.ssh_key = None    
     config_bucketname = 'cirrus_workstation_config_%s' % (hashlib.md5(iam_aws_id).hexdigest())
     src_region = self.region_name
     dst_regions = util.tested_region_names
@@ -207,7 +206,7 @@ class Manager(object):
     LOG(INFO, 'workstation_instance_profile_name: %s' % (workstation_instance_profile_name))
     reservation = self.ec2.run_instances(ami.id, 
                            key_name = self.workstation_keypair_name,
-                           security_groups = [self.workstation_security_group],
+                           security_groups = [util.workstation_security_group],
                            instance_type = instance_type,
                            #placement = prefered_availability_zone,
                            disable_api_termination = True,
@@ -392,7 +391,7 @@ class Manager(object):
 
 
   def __CreateWorkstationSecurityGroup(self):
-    group_name = self.workstation_security_group
+    group_name = util.workstation_security_group
     group = None
     try:
       groups = self.ec2.get_all_security_groups([group_name])

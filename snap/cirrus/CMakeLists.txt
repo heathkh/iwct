@@ -6,7 +6,7 @@ PY_LIBRARY(
 )
 
 ADD_SUBDIRECTORY(ami)
-#ADD_SUBDIRECTORY(cluster)
+ADD_SUBDIRECTORY(cluster)
 ADD_SUBDIRECTORY(workstation)
 
 

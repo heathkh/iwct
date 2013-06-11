@@ -33,20 +33,44 @@ from snap.ansible import callbacks
 from snap.ansible import playbook
 from snap.ansible import utils
 from snap.ansible import inventory
+from snap.ansible import runner
 from snap.ansible.utils import plugins
 
 tested_region_names = ['us-east-1', 'us-west-1']
 valid_instance_roles = ['workstation', 'master', 'worker']
+hpc_instance_types = ['cc1.4xlarge', 'cc2.8xlarge', 'cr1.8xlarge']
+official_cirrus_ami_owner_id = '925479793144'
+workstation_security_group = 'cirrus_workstation'
 
-def RunPlaybookOnHost(playbook_path, host, private_key, extra_vars = None):
-  inventory = ansible.inventory.Inventory([host])
+def GetNumCoresOnHosts(hosts, private_key):
+  results = runner.Runner(host_list = hosts,                                    
+                                 forks=10,
+                                 private_key = private_key,
+                                 module_name='setup',                                 
+                                 ).run()
+  num_cores_list = []                              
+  for host, props in results['contacted'].iteritems():
+    cores = props['ansible_facts']['ansible_processor_cores']
+    val = 0
+    try:
+      val = int(cores)
+    except:
+      pass
+    num_cores_list.append(val)    
+  return num_cores_list
+
+def RunPlaybookOnHosts(playbook_path, hosts, private_key, extra_vars = None):
+  
+  inventory = ansible.inventory.Inventory(hosts)
   if len(inventory.list_hosts()) == 0:
     LOG(FATAL, "provided hosts list is empty")
   stats = callbacks.AggregateStats()
-  playbook_cb = ansible.callbacks.PlaybookCallbacks(verbose=ansible.utils.VERBOSITY)
-  runner_cb = ansible.callbacks.PlaybookRunnerCallbacks(stats, verbose=ansible.utils.VERBOSITY)
+  verbosity = 0
+  playbook_cb = ansible.callbacks.PlaybookCallbacks(verbose=verbosity)
+  runner_cb = ansible.callbacks.PlaybookRunnerCallbacks(stats, verbose=verbosity)
+  
   pb = ansible.playbook.PlayBook(playbook=playbook_path,
-                            host_list = [host],
+                            host_list = hosts,
                             remote_user = 'ubuntu',
                             private_key_file = None,
                             private_key = private_key,
@@ -55,17 +79,20 @@ def RunPlaybookOnHost(playbook_path, host, private_key, extra_vars = None):
                             runner_callbacks = runner_cb,    
                             extra_vars = extra_vars                        
                             )
-  results = pb.run()
-  print results
-  
+  results = pb.run()      
+    
+  #print results  
   if 'dark' in results:
     if len(results['dark']) > 0:
         print "Contact failures:"
         for host, reason in results['dark'].iteritems():
             print "  %s (%s)" % (host, reason['msg'])
-        return False
-      
+        return False      
   return True
+
+
+def RunPlaybookOnHost(playbook_path, host, private_key, extra_vars = None):
+  return RunPlaybookOnHosts(playbook_path, [host], private_key, extra_vars)
 
 
 
@@ -177,11 +204,12 @@ def RemoteExecuteCmd(args):
       client.connect(hostname, username='ubuntu', pkey=private_key, allow_agent=False, look_for_keys=False)
       break
     except socket.error as e:
-      print 'socket timed out...'
+      #print 'socket timed out...'
       time.sleep(5)
     except paramiko.AuthenticationException as e:
       print e
-      time.sleep(5) 
+      time.sleep(5)
+    
     
   channel = client.get_transport().open_session()
   channel.exec_command(cmd)
@@ -216,8 +244,10 @@ def RunCommandOnHost(cmd, hostname, ssh_key):
 
 
 def ReadRemoteFile(remote_file_path, hostname, ssh_key):  
-  cmd = 'cat %s' % remote_file_path
+  cmd = 'sudo cat %s' % remote_file_path
   exit_code, output = RunCommandOnHost(cmd, hostname, ssh_key)
+  if exit_code:
+    raise IOError('Can not read remote path: %s' % (remote_file_path))
   return output
 
 
@@ -239,22 +269,22 @@ def ReadRemoteFile(remote_file_path, hostname, ssh_key):
 #  return exists
 
 
-#def RunScriptOnHosts(local_path_to_script, script_args, hostnames, private_key_file):  
-#  CHECK(os.path.exists(local_path_to_script), 'Script file does not exist: %s' % (local_path_to_script))
-#  CopyToHosts(local_path_to_script, "", hostnames, private_key_file)
-#  remote_path_to_script = "./"+ os.path.basename(local_path_to_script)
-#  retvals = RunCommandOnHosts("chmod +x " + remote_path_to_script, hostnames, private_key_file)
-#  retvals = RunCommandOnHosts("sudo " + remote_path_to_script + " " + script_args, hostnames, private_key_file)
-#  CHECK_EQ(len(retvals), len(hostnames))
-#  success_flags = [(r == 0) for r in retvals ]
-#  return success_flags
-#
-#def RunScriptOnHost(local_path_to_script, script_args, hostname, private_key_file):
-#  hostnames = []
-#  hostnames.append(hostname)
-#  success_flags = RunScriptOnHosts(local_path_to_script, script_args, hostnames, private_key_file)
-#  CHECK(len(success_flags), 1)
-#  return success_flags[0]
+# def RunScriptOnHosts(local_path_to_script, script_args, hostnames, ssh_key):  
+#   CHECK(os.path.exists(local_path_to_script), 'Script file does not exist: %s' % (local_path_to_script))
+#   CopyToHosts(local_path_to_script, "", hostnames, private_key_file)
+#   remote_path_to_script = "./"+ os.path.basename(local_path_to_script)
+#   retvals = RunCommandOnHosts("chmod +x " + remote_path_to_script, hostnames, private_key_file)
+#   retvals = RunCommandOnHosts("sudo " + remote_path_to_script + " " + script_args, hostnames, private_key_file)
+#   CHECK_EQ(len(retvals), len(hostnames))
+#   success_flags = [(r == 0) for r in retvals ]
+#   return success_flags
+# 
+# def RunScriptOnHost(local_path_to_script, script_args, hostname, private_key_file):
+#   hostnames = []
+#   hostnames.append(hostname)
+#   success_flags = RunScriptOnHosts(local_path_to_script, script_args, hostnames, private_key_file)
+#   CHECK(len(success_flags), 1)
+#   return success_flags[0]
 
 
 def WaitForInstanceReachable(instance, ssh_key):
@@ -305,7 +335,11 @@ def WaitForHostsReachable(hostnames, ssh_key):
 # EC2 Helpers    
 ################################################################################
 
-def LookupCirrusAmi(ec2, instance_type, ubuntu_release_name, mapr_version, role, ami_owner_id = '925479793144'):
+def LookupCirrusAmi(ec2, instance_type, ubuntu_release_name, mapr_version, role, ami_owner_id = None):
+  
+  if not ami_owner_id:
+    ami_owner_id = official_cirrus_ami_owner_id
+  
   CHECK(role in valid_instance_roles)
   virtualization_type = 'paravirtual'
   if IsHPCInstanceType(instance_type):
@@ -454,12 +488,15 @@ def WaitForSnapshotCompleted(snapshot):
 def __WaitForInstance(instance, desired_state):
   print 'Waiting for instance %s to change to %s' % (instance.id, desired_state)
   while True:
-    instance.update()
-    state = instance.state
-    sys.stdout.write('.')
-    sys.stdout.flush()
-    if state == desired_state:
-      break
+    try:
+      instance.update()
+      state = instance.state
+      sys.stdout.write('.')
+      sys.stdout.flush()
+      if state == desired_state:
+        break
+    except boto.exception.EC2ResponseError as e:
+      LOG(INFO, e)
     time.sleep(5)
   print 'done'
   return
@@ -550,8 +587,7 @@ def SearchUbuntuAmiDatabase(release_name, region_name, root_store_type, virtuali
     return selected_ami
  
  
-def IsHPCInstanceType(instance_type): 
-  hpc_instance_types = ['cc1.4xlarge', 'cc2.8xlarge', 'cr1.8xlarge']
+def IsHPCInstanceType(instance_type):   
   return instance_type in hpc_instance_types
 
 def GetRootStoreAndVirtualizationType(instance_type):
