@@ -1,14 +1,38 @@
 ---
 - hosts: all
-  gather_facts: False # With facts stage enabled, there is too much info returned and python throws error... 
+  gather_facts: False  
   sudo: yes         
   tasks:
     - name: Allow shared key ssh from master to worker
       authorized_key: user=root key="$master_pub_key"
-  
-    - name: Start MapR services
-      script: start_node -n $master_ip -z $master_ip > /dev/null 2>&1
-  
+    
+    - name: Ensure warden is stopped
+      command: service mapr-warden stop
+      ignore_errors: yes
+      
+    - name: Ensure warden pid cleaned up
+      command: rm -rf /opt/mapr/logs/warden.pid
+      ignore_errors: yes    
+      
+    - name: setup node
+      script: setup_node -n $master_ip -z $master_ip > /dev/null 2>&1
+      
+    - name: Copy monit template
+      copy: src=monitrc dest=/etc/monit/monitrc owner=root group=root
+    
+#    - name: Ensure warden is started
+#      command: service mapr-warden start
+#      ignore_errors: yes
+    
+    - name: Install monit 
+      apt: pkg=monit
+      
+    - name: Ensure monit is running to watch warden
+      service: name=monit state=restarted  
+      
+    - name: Waiting for task tracker started  
+      wait_for: port=50060  
+      
     - name: install gmond.conf
       template: src=gmond.conf.j2 dest=/etc/ganglia/gmetad.conf owner=root group=root
     

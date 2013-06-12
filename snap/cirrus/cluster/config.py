@@ -18,7 +18,7 @@ class CirrusConfig(object):
     #self.cluster_instance_type = 'cc2.8xlarge'        
     #self.cluster_instance_type = 'cc1.4xlarge'
     self.mapr_version = 'v2.1.3'
-    self.zones = ['a'] # list like this ['a','c','e']
+    self.zones = ['b'] # list like this ['a','c','e']
     return
   
 def GetConfiguration():

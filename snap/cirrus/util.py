@@ -77,18 +77,28 @@ def RunPlaybookOnHosts(playbook_path, hosts, private_key, extra_vars = None):
                             stats = stats,
                             callbacks = playbook_cb,
                             runner_callbacks = runner_cb,    
+                            forks = 1,  # If more than one process is used, there is a race condition that can cause Error 11 to be raised
                             extra_vars = extra_vars                        
                             )
   results = pb.run()      
     
   #print results  
+  success = True
   if 'dark' in results:
     if len(results['dark']) > 0:
         print "Contact failures:"
         for host, reason in results['dark'].iteritems():
             print "  %s (%s)" % (host, reason['msg'])
-        return False      
-  return True
+        success = False   
+  
+  for host, status in results.iteritems():
+    if host == 'dark':
+      continue
+    failures = status['failures']
+    if failures:
+      LOG(INFO, '%s %s' % (host, status))
+      success = False 
+  return success
 
 
 def RunPlaybookOnHost(playbook_path, host, private_key, extra_vars = None):

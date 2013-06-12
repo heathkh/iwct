@@ -4,7 +4,8 @@ PY_LIBRARY(
   NAME      cluster
   SOURCES   ec2cluster.py                               
             mapr.py      
-            config.py                            
+            config.py
+            cli.py                            
 )
 
 ADD_SUBDIRECTORY(playbooks)

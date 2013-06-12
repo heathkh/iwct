@@ -1072,17 +1072,17 @@ if ($tempClusterConf == 1) {
 
 SetupAndStartNTP();
 
-# startup zookeeper (if zknode)
-if (-e "/etc/init.d/mapr-zookeeper") {
-  $cmd = "/bin/bash /etc/init.d/mapr-zookeeper restart";
-  printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
-  system ($cmd);
-}
+## startup zookeeper (if zknode)
+#if (-e "/etc/init.d/mapr-zookeeper") {
+#  $cmd = "/bin/bash /etc/init.d/mapr-zookeeper restart";
+#  printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
+#  system ($cmd);
+#}
 
-# startup warden
-$cmd = "/bin/bash /etc/init.d/mapr-warden restart";
-printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
-system ($cmd);
+## startup warden
+#$cmd = "/bin/bash /etc/init.d/mapr-warden restart";
+#printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
+#system ($cmd);
 
 
 printf ("%s: done executing %s\n", scalar(localtime()), $0);

@@ -25,6 +25,8 @@ import urllib2
 #import hashlib
 import time 
 
+from passlib.hash import sha256_crypt
+
 class MaprClusterConfig(object):
   """
   MapR Service Configuration
@@ -117,7 +119,7 @@ class MaprCluster(object):
     #self.__RunCommandOnInstances('sudo killall -9 maprcli', [master_instances])
     instances = self.__GetCldbRegisteredWorkerInstances()    
     #self.__RunCommandOnInstances('sudo service mapr-warden restart', instances)
-    self.__RestartTaskTrackers(instances)
+    CHECK(self.__RestartTaskTrackers(instances))
     self.__RestartJobTracker()
     return
   
@@ -137,16 +139,16 @@ class MaprCluster(object):
     return
   
   def __ReconfigureTaskTrackers(self, instances, num_map_slots, num_reduce_slots):
-    self.__ConfigureMapredSite(instances, num_map_slots, num_reduce_slots)
+    CHECK(self.__ConfigureMapredSite(instances, num_map_slots, num_reduce_slots))
     time.sleep(1)
-    self.__RestartTaskTrackers(instances)
+    CHECK(self.__RestartTaskTrackers(instances))
     return
 
   def __ReconfigureJobTracker(self, num_map_slots, num_reduce_slots):
     master = self.__GetMasterInstance()
-    self.__ConfigureMapredSite([master], num_map_slots, num_reduce_slots) 
+    CHECK(self.__ConfigureMapredSite([master], num_map_slots, num_reduce_slots)) 
     time.sleep(1)
-    self.__RestartJobTracker()
+    CHECK(self.__RestartJobTracker())
     return
 
 #   def GetNumCoresPerTaskTracker(self):
@@ -325,7 +327,7 @@ class MaprCluster(object):
     #self.__ConfigureMaster()
     #self.__ConfigureGanglia()
     #self.__ConfigureMaster()
-    #self.__ConfigureWorkers(self.__GetWorkerInstances())
+    self.__ConfigureWorkers(self.__GetWorkerInstances())
     #print self.GetNumCoresPerWorker()
     
     #self.ConfigureClient()
@@ -366,7 +368,8 @@ class MaprCluster(object):
     num_masters = len(self.cluster.get_instances_in_role("master", "running"))
     CHECK_LT(num_masters, 1)
     LOG(INFO, "waiting for masters to start")          
-    self.__LaunchSpotMasterInstances()
+    #self.__LaunchSpotMasterInstances()
+    self.__LaunchOnDemandMasterInstances()
     time.sleep(1)
     self.__ConfigureMaster()
     return True
@@ -392,7 +395,7 @@ class MaprCluster(object):
     print util.ExecuteCmd(cmd)
     unmount_nfs_cmd = 'sudo umount -l /mapr'
     mount_nfs_cmd = 'sudo mkdir /mapr; sudo chmod 777 /mapr; sudo mount %s:/mapr /mapr;' % (master_instance.public_hostname)
-    perm_nfs_cmd = 'sudo chmod -R 777 /mapr/my.cluster.com/'
+    perm_nfs_cmd = 'sudo chmod  777 /mapr/my.cluster.com/'
     # mount nfs locally
     LOG(INFO, 'unmounting nfs')
     util.ExecuteCmd(unmount_nfs_cmd)
@@ -420,8 +423,12 @@ class MaprCluster(object):
     CHECK(master_instance)
     self.__WaitForInstancesReachable([master_instance])
     self.__SetupAccessControl()
+    
+    
+    root_password_hash = sha256_crypt.encrypt("mapr")
     extra_vars = {'cluster_name': self.config.cluster_name,
-                  'master_ip': master_instance.private_ip}
+                  'master_ip': master_instance.private_ip,
+                  'root_password_hash': root_password_hash}
     CHECK(util.RunPlaybookOnHost(self.playbooks_path + '/master.yml', master_instance.private_ip, self.ssh_key, extra_vars))    
     self.__WaitForMasterReady()    
     self.__SetupMasterTopology()
@@ -818,6 +825,7 @@ class MaprCluster(object):
 #     self.__SetWorkerTopology()
 #     return 
 
+  
   def __ConfigureWorkers(self, worker_instances):
     if not worker_instances:
       return
@@ -869,8 +877,12 @@ class MaprCluster(object):
     params = {'nodes': node_list, 'tasktracker' : 'restart'}
     print params
     r = self.__MaprApi('node/services', params)
-    CHECK_EQ(r['status'], 'OK', r)
-    return True
+    
+    success = True
+    if r['status'] != 'OK':
+      LOG(INFO, r)
+      success = False
+    return success
 
 
 #  def __RestartTaskTrackers(self, instances):        
@@ -932,53 +944,79 @@ class MaprCluster(object):
 #                             self.ssh_key)
   
  
-      
-  def __LaunchSpotMasterInstances(self):        
-    # Compute a good bid price based on recent price history
-    prefered_master_zone = self._GetAvailabilityZoneNameByIndex(0)
-    num_days = 1
-    cur_price = self.cluster.get_current_spot_instance_price(self.config.cluster_instance_type, prefered_master_zone)    
-    recent_max_price = self.cluster.get_recent_max_spot_instance_price(self.config.cluster_instance_type, prefered_master_zone, num_days)    
-    high_availability_bid_price = recent_max_price + 0.10     
-    print 'current price: %f' % (cur_price)
-    print 'high_availability_bid_price: %f' % (high_availability_bid_price)
-    CHECK_LT(cur_price, 0.35) # sanity check so we don't do something stupid
-    CHECK_LT(high_availability_bid_price, 1.25) # sanity check so we don't do something stupid
-    # get the ami preconfigured as a master mapr node
-    role = 'master'
-    ami = util.LookupCirrusAmi(self.ec2, 
-                               self.config.cluster_instance_type, 
-                               self.config.ubuntu_release_name, 
-                               self.config.mapr_version, 
-                               role,
-                               self.config.mapr_ami_owner_id)
-    CHECK(ami)    
-    number_zone_list = [(1, prefered_master_zone)] 
-    ids = self.cluster.launch_and_wait_for_spot_instances(price=high_availability_bid_price,
-                                             role='master',                                             
-                                             image_id=ami.id,
-                                             instance_type=self.config.cluster_instance_type,
-                                             private_key_name=self.cluster_keypair_name,
-                                             number_zone_list=number_zone_list)
-    return ids
 
+
+
+
+
+  def __LaunchOnDemandMasterInstances(self):        
+      # Compute a good bid price based on recent price history
+      prefered_master_zone = self._GetAvailabilityZoneNameByIndex(0)
+      role = 'master'
+      ami = util.LookupCirrusAmi(self.ec2, 
+                                 self.config.cluster_instance_type, 
+                                 self.config.ubuntu_release_name, 
+                                 self.config.mapr_version, 
+                                 role,
+                                 self.config.mapr_ami_owner_id)
+      CHECK(ami)    
+      number_zone_list = [(1, prefered_master_zone)] 
+      new_instances = self.cluster.launch_and_wait_for_demand_instances(
+                                               role='master',
+                                               image_id=ami.id,
+                                               instance_type=self.config.cluster_instance_type,
+                                               private_key_name=self.cluster_keypair_name,
+                                               number_zone_list=number_zone_list)
+      CHECK(new_instances)
+      return new_instances
+      
+        
+  def __LaunchSpotMasterInstances(self):        
+      # Compute a good bid price based on recent price history
+      prefered_master_zone = self._GetAvailabilityZoneNameByIndex(0)
+      num_days = 1
+      cur_price = self.cluster.get_current_spot_instance_price(self.config.cluster_instance_type, prefered_master_zone)    
+      recent_max_price = self.cluster.get_recent_max_spot_instance_price(self.config.cluster_instance_type, prefered_master_zone, num_days)    
+      high_availability_bid_price = recent_max_price + 0.10     
+      print 'current price: %f' % (cur_price)
+      print 'high_availability_bid_price: %f' % (high_availability_bid_price)
+      CHECK_LT(cur_price, 0.35) # sanity check so we don't do something stupid
+      CHECK_LT(high_availability_bid_price, 1.25) # sanity check so we don't do something stupid
+      # get the ami preconfigured as a master mapr node
+      role = 'master'
+      ami = util.LookupCirrusAmi(self.ec2, 
+                                 self.config.cluster_instance_type, 
+                                 self.config.ubuntu_release_name, 
+                                 self.config.mapr_version, 
+                                 role,
+                                 self.config.mapr_ami_owner_id)
+      CHECK(ami)    
+      number_zone_list = [(1, prefered_master_zone)] 
+      ids = self.cluster.launch_and_wait_for_spot_instances(price=high_availability_bid_price,
+                                               role='master',                                             
+                                               image_id=ami.id,
+                                               instance_type=self.config.cluster_instance_type,
+                                               private_key_name=self.cluster_keypair_name,
+                                               number_zone_list=number_zone_list)
+      return ids
+  
   def __LaunchOnDemandWorkerInstances(self, number_zone_list): 
-    role = 'worker'
-    ami = util.LookupCirrusAmi(self.ec2, 
-                               self.config.cluster_instance_type, 
-                               self.config.ubuntu_release_name, 
-                               self.config.mapr_version, 
-                               role,
-                               self.config.mapr_ami_owner_id)
-    CHECK(ami)
-    new_instances = self.cluster.launch_and_wait_for_demand_instances(
-                                             role='spotworker',
-                                             image_id=ami.id,
-                                             instance_type=self.config.cluster_instance_type,
-                                             private_key_name=self.cluster_keypair_name,
-                                             number_zone_list=number_zone_list)
-    CHECK(new_instances)
-    return new_instances
+      role = 'worker'
+      ami = util.LookupCirrusAmi(self.ec2, 
+                                 self.config.cluster_instance_type, 
+                                 self.config.ubuntu_release_name, 
+                                 self.config.mapr_version, 
+                                 role,
+                                 self.config.mapr_ami_owner_id)
+      CHECK(ami)
+      new_instances = self.cluster.launch_and_wait_for_demand_instances(
+                                               role='spotworker',
+                                               image_id=ami.id,
+                                               instance_type=self.config.cluster_instance_type,
+                                               private_key_name=self.cluster_keypair_name,
+                                               number_zone_list=number_zone_list)
+      CHECK(new_instances)
+      return new_instances
 
   def __LaunchSpotWorkerInstances(self, number_zone_list): 
     max_zone_price = 0
