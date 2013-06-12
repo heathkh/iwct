@@ -20,6 +20,7 @@ import tempfile
 import paramiko
 import StringIO
 
+import Crypto
 from Crypto.PublicKey import RSA
 import base64
 from snap.boto.s3.key import Key
@@ -195,6 +196,7 @@ def UrlGet(url, timeout=10, retries=0):
 def RemoteExecuteCmd(args):  
   """ Executes a command via ssh and sends back the exit status code. """
   cmd, hostname, ssh_key = args
+  Crypto.Random.atfork() # needed to fix bug in old python 2.6 interpreters 
   private_key = paramiko.RSAKey.from_private_key(StringIO.StringIO(ssh_key))
   client = paramiko.SSHClient()
   client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
