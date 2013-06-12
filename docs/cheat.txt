@@ -1,0 +1,34 @@
+*******
+Chapter
+*******
+
+
+Section
+=======
+
+
+
+Subsection
+----------
+
+
+
+Subsubsection
+^^^^^^^^^^^^^
+
+
+
+Paragraph
+"""""""""
+
+
+
+
+..  note::
+
+    This is a note in a box.
+
+    
+.. code-block:: bash
+  
+  iwct_cluster create 5    

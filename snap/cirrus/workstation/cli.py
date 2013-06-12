@@ -1,10 +1,20 @@
 #!/usr/bin/python
 import sys
-from pyglog import *
-from cirrus import util
-from cirrus.workstation import workstation
+import os
+
+# HACK: On bebo python env is messed up... this makes sure we find the modules
+project_root = os.path.abspath(os.path.dirname(__file__) + '/../../../')
+sys.path = [project_root, project_root + '/build', project_root + '/build/snap'] + sys.path
+#print sys.path
+
+from snap.cirrus import util
+from snap.cirrus.workstation import workstation
+from snap.pyglog import *
 import ConfigParser
 import os
+import sys
+
+
 
 class Cli(object):
   def __init__(self):
