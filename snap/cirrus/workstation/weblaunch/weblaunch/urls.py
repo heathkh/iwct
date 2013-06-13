@@ -7,7 +7,7 @@ admin.autodiscover()
 urlpatterns = patterns('',
     # Examples:
     url(r'^$', 'weblaunch.views.home', name='home'),
-    url(r'^weblaunch/', include('weblaunch.foo.urls')),
+    #url(r'^weblaunch/', include('weblaunch.foo.urls'))
     url(r"^account/", include("account.urls")),
     
     # Uncomment the admin/doc line below to enable admin documentation:

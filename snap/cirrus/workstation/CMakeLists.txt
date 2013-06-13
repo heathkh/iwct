@@ -10,7 +10,7 @@ PY_BINARY(
   SOURCES   cli.py                                  
 )
 
-
+ADD_SUBDIRECTORY(weblaunch)
 
 
 
