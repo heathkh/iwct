@@ -8,7 +8,8 @@ LOCAL_RESOURCES(
             mapred-site.xml.j2            
             master.yml
             worker.yml
-            setup_node
-            monitrc                          
+            configure_mapr
+            configure_mapr.yml
+            monitrc                                      
 )
 
