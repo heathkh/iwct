@@ -1,0 +1,1069 @@
+#!/usr/bin/env perl
+
+use Getopt::Std;
+use File::Temp qw/ tempfile tempdir /;
+
+#
+# Copyright (c) 2009 & onwards. MapR Tech, Inc., All rights reserved
+#
+
+use strict;
+use warnings;
+
+# re-direct stderr to stdout, its hard to match errors to commands
+open STDERR, ">&STDOUT";
+
+######
+# Globals
+######
+sub GetPhysMem() {
+  open (MEM, "/proc/meminfo");
+  
+  # first line is MemTotal: nnn kB
+  my $line = <MEM>;
+
+  my $mem = 0;
+  if ($line =~ /(.*) (\d+) kB/) {
+    $mem = $2; 
+  }
+
+  close (MEM);
+  return $mem;
+}
+
+my $totMemKB_ = GetPhysMem();
+printf "%s: [INFO] Physical Memory = %d KB\n",
+    scalar(localtime()), $totMemKB_;
+
+# we create a partition for the remainder of the disk, so that the
+# diskssetup.sh can use it
+
+#
+# we use sfdisk because with parted there's no way of creating a partition
+# without specifying the end.
+#
+
+# swap & logs (10G)
+my $memx1_ = ($totMemKB_) / 1024; # in MBytes
+$memx1_ = int $memx1_; # cast it
+
+my $memx2_ = ($totMemKB_ * 2) / 1024; # in MBytes
+$memx2_ = int $memx2_ ; # cast it
+
+use constant TypeSwap     => "S";
+use constant TypeLinux    => "L";
+use constant TypeExtended => "E";
+use constant NoMountReqd  => "No Mount Required";
+
+use constant OptCores    => "/opt/cores";
+use constant OptMapRLogs => "/opt/mapr/logs";
+
+my @partitions_     = ( $memx1_, $memx2_, 200*1024, -1 ); # -1: rest of the disk
+my @partitionTypes_ = ( TypeSwap, TypeLinux, TypeLinux, TypeLinux ); # for sfdisk
+my @mountPoints_    = ( "none", OptCores, OptMapRLogs, "");
+my @mountType_      = ( "swap", "ext3", "ext3", "");
+my @mountOpts_      = ( "sw", "rw",   "rw", "");
+my @partitionName_  = ( "", "", "", "" );
+my @disksForSetup_  = (); # list of disks for disksetup.sh
+
+#NOTE: LIMIT OF AT MOST 4 primary partitions!!!! Need to figure out how to do extended partitions properly if you want more.
+
+##########
+# END Globals
+##########
+
+##########
+# Methods
+##########
+
+sub GetAllPartitions ($ $)
+{
+  use constant MaxRetries => 1;
+  my $disk = $_[0];
+  my $rmPartitons = $_[1];
+
+  my @partedOut;
+  my $usedParted=0;
+  my $usedFdisk=0;
+
+  for (my $i = 0; $i < MaxRetries; $i++) {
+    @partedOut = `parted -s $disk print`;
+
+    if ($? != 0) {
+      # failed. Try fdisk
+      printf "%s: [INFO] parted failed for $disk, trying fdisk\n",
+            scalar(localtime());
+
+      @partedOut = `fdisk -l $disk`;
+      $usedFdisk = 1;
+    } else {
+      $usedParted = 1;
+      last;
+    }
+  }
+
+  my @partitions = ();
+  foreach my $line (@partedOut) {
+    if ($usedParted == 1 && $line =~ /^ (\d+)(\s+)(.*)/) {
+      push (@partitions, $1);
+    } elsif ($usedFdisk == 1 && $line =~ /$disk(\d+)(\s+)(.*)/) {
+      push (@partitions, $1);
+    }
+  }
+
+  if ($rmPartitons == 0) {
+    return @partitions;
+  }
+
+  printf "%s: [INFO] Removing Partitions of $disk: @partitions\n",
+      scalar(localtime());
+
+  foreach my $part (@partitions) {
+    my $cmd = "";
+    if ($usedParted == 1) {
+      $cmd = "parted -s $disk rm $part";
+    } elsif ($usedFdisk == 1) {
+      $cmd = "echo -e '\nd\n$part\nw' | fdisk $disk";
+    }
+
+    printf ("%s: [INFO]: Running: $cmd\n", scalar(localtime()));
+    system ($cmd); # ignore errors
+  }
+
+  return @partitions;
+}
+
+sub AddToFstab ($ $ $ $)
+{
+  my ($device, $mntPath, $type, $opts) = @_;
+  my $ret = open (FSTAB, ">> /etc/fstab");
+  if ($ret == 0) {
+    printf ("%s: [ERROR] appending to fstab\n", scalar(localtime()));
+    return 1;
+  }
+
+  my $entry = "$device $mntPath $type $opts 0 0";
+  print FSTAB "$entry\n";
+
+  close (FSTAB);
+  return 0;
+}
+
+sub RemoveFromFstab ($)
+{
+  my $mntPath = $_[0];
+  my $escapedPath = $mntPath;
+  $escapedPath =~ s#/#\\/#g;
+
+  my $cmd = "sed -i '/$escapedPath/d' /etc/fstab";
+  printf "%s: [INFO] Removing %s from /etc/fstab: cmd=%s\n",
+      scalar(localtime()), $mntPath, $cmd;
+
+  my $ret = system ($cmd);
+  $ret = $ret >> 8;
+  if ($ret != 0) {
+    printf "%s: [ERROR] failed to delete %s from /etc/fstab\n",
+        scalar(localtime()),$mntPath;
+  }
+}
+
+# returns
+#   <0: failed:
+#    0: nothing to remove
+#   >0: num devices removed from swap
+sub RemoveFromSwap ($ $)
+{
+  my ($device, $array_reference) = @_;
+  my @swapOnData = @$array_reference;
+
+  my @swapDev = ();
+  foreach my $line (@swapOnData) {
+    if ($line =~ /($device\d*) (.*)/) {
+      push (@swapDev, $1);
+      printf "%s: found a swap device %s on %s\n",
+          scalar(localtime()), $1, $device;
+    }
+  }
+
+  my $numDevs = scalar (@swapDev);
+  if ($numDevs == 0) {
+    return 0; # device not in swap
+  }
+
+  my $cmd = "swapoff @swapDev"; # we can remove all of them at once
+  printf "%s: [INFO] removing from swap, running cmd: $cmd\n",
+      scalar(localtime());
+
+  my $ret = system ($cmd);
+  $ret = $ret >> 8;
+
+  if ($ret != 0) {
+    printf ("%s: [INFO] $cmd failed: ret=%d\n", scalar(localtime()), $ret);  
+    return -1;
+  }
+
+  # remove them from fstab too
+  for (my $i=0; $i < $numDevs; $i++) {
+    RemoveFromFstab ($swapDev[$i]);
+  }
+
+  return $numDevs;
+}
+
+sub AddToDiskSetup ($)
+{
+  my ($disk) = @_;
+  my $nameToUse = $disk;
+
+  # resolve symlinks:
+  my $cmd = "ls -l $disk";
+  my @out = `$cmd`;
+  my $ret = $?;
+
+  printf "%s: [INFO] (resolving symlink) cmd: %s, o/p=\n@out\n",
+        scalar(localtime()), $cmd;
+
+  if ($ret == 0) {
+    my @lsOut = split (/\s+/, $out[0]);
+    my $mode = $lsOut[0];
+
+    if (index ($mode, "l") == 0) {  # symlink
+      my $srcFileName = $lsOut[$#lsOut]; # last element is the src
+      printf ("[DEBUG] link %s -> %s\n", $disk, $srcFileName);
+
+      if (index ($srcFileName, "/") == 0) {
+        # use it as is
+        $nameToUse = $srcFileName;
+      } else {
+        my $ridx = rindex ($disk, "/");
+        $nameToUse = substr ($disk, 0, $ridx+1) . $srcFileName;
+      }
+
+      printf "%s: [INFO] followed symlink %s (in-place of %s)\n",
+          scalar(localtime()), $nameToUse, $disk;
+    }
+  }
+
+  push (@disksForSetup_, $nameToUse);
+}
+
+#
+# returns
+#  0: all partitions allocated
+# >0: Num partitions to be allocd
+#
+sub CreateReqdPartitions ($ $)
+{
+  use constant SkipFormatting => "Skip Formatting";
+
+  my ($disk, $diskSz) = @_;
+
+  # we use a single disk to create all our partitions, so make sure
+  # that we can fit it..
+  my $reqdSpace = 0;
+  my $numElements = scalar (@partitions_); 
+
+  for (my $i=0; $i < $numElements; $i++) {
+    next if (length($partitionName_[$i]) > 0);
+
+    $reqdSpace += $partitions_[$i];
+  }
+
+  if ($reqdSpace <= 0) {
+    printf ("%s: [INFO] Dont need to create partitions", scalar(localtime()));
+    AddToDiskSetup ($disk);
+    return 0;
+  }
+
+  if ($diskSz < $reqdSpace) {
+    printf "%s: found %d bytes in disk %s, reqd=%d (skipping disk)",
+        scalar(localtime()), $diskSz, $disk, $reqdSpace;
+    return 1;
+  }
+
+  # re-partition
+  GetAllPartitions ($disk, 1); # remove partitions
+
+  # make sure we got rid of all partitions
+  my @p = GetAllPartitions($disk, 0); # don't remove
+  my $numPartitions = scalar (@p);
+  if ($numPartitions != 0) {
+    printf "%s: number of partitions found on %s=%d, skipping disk\n",
+          scalar(localtime()), $disk, $numPartitions;
+    return 1;
+  }
+
+  printf "%s: [INFO] Creating partitions on %s (size=%d)\n",
+        scalar(localtime()), $disk, $diskSz;
+
+  my @newPartNames = ();
+  my @newPartsFmt = ();
+  my $part = 1;
+
+  my $partitionTable="";
+  for (my $i=0; $i < $numElements; $i++) {
+    next if (length($partitionName_[$i]) > 0);
+
+    my $type = $partitionTypes_[$i];
+    my $size = $partitions_[$i];
+
+    next if ($size == 0);
+
+    #format for sfdisk: <start>,<end>,<size>,<type>
+    my $szStr = $size > 0 ? $size: "";
+
+    my $entry = ",$szStr,$type,-\n";
+    $partitionTable = $partitionTable.$entry;
+
+    my $newPartitionName = "$disk$part";
+    $part++;
+
+    # new partition ..
+    my $fmtCmd;
+    if ($size <= 0) {
+      $fmtCmd = SkipFormatting . ": free disk";
+    } elsif ($type eq TypeSwap) {
+      $fmtCmd = "mkswap  $newPartitionName";
+    } elsif ($type eq TypeLinux || $type eq TypeExtended) {
+       #$fmtCmd = "yes | mkfs -t $mountType_[$i] $newPartitionName"; # orig
+	   $fmtCmd = "yes | mkfs -E lazy_itable_init -T largefile4 -t $mountType_[$i] $newPartitionName";  # experiment with lazy_itable_init and -T largefile4  to make this faster 
+    } else {
+      $fmtCmd = SkipFormatting . ": $newPartitionName, unknown type: $type";
+    }
+
+    $newPartNames[$i] = $newPartitionName;
+    $newPartsFmt[$i] = $fmtCmd;
+  }
+
+  printf "%s: sfdisk table for %s:\n%s",
+      scalar(localtime()), $disk, $partitionTable;
+
+  my $mkFileSystem = 0;
+  use constant Template => "/tmp/partitiontable.XXXX";
+
+  if (length ($partitionTable) > 0) {
+    my ($fh, $filename) = tempfile(Template, UNLINK => 1);
+    print $fh $partitionTable;
+    close ($fh);
+
+    my $cmd = "sfdisk -uM $disk < $filename";
+
+    printf ("%s: [INFO] Running cmd: %s\n", scalar(localtime()), $cmd);
+    my $ret = system ($cmd);
+
+    $ret = $ret >> 8;
+    if ($ret == 0) {
+      $mkFileSystem = 1;
+      printf "%s: (fdisk output) Partition table for %s\n",
+          scalar(localtime()), $disk;
+      system ("fdisk -l $disk"); #dump the output to stdout
+    } else {
+      printf "%s: [ERROR] failed to create partitions for $disk\n",
+          scalar(localtime());
+    }
+  }
+
+  if ($mkFileSystem == 0) {
+    return 1; # partitioning failed.
+  }
+
+  my $status = 0;
+  my $size = scalar (@newPartsFmt);
+
+  printf "%s: Sleeping for 5 seconds to make sure the devices are created\n",
+        scalar(localtime());
+  sleep (5);
+
+  for (my $i=0; $i < $size; $i++) {
+    my $cmd = $newPartsFmt[$i];
+
+    next if (! defined $cmd || $cmd eq "");
+
+    if ($cmd =~ SkipFormatting) {
+      AddToDiskSetup ($newPartNames[$i]);
+      next;
+    }
+
+    printf "%s: [INFO] Formatting partition with: $cmd\n",
+        scalar(localtime());
+    my $ret = system ($cmd);
+    $ret = $ret >> 8;
+
+    if ($ret != 0) {
+      $status++; # count failures
+      next;
+    }
+
+    # mount it - other wise the diskssetup will use it
+    $ret = AddToFstab (
+          $newPartNames[$i],
+          $mountPoints_[$i],
+          $mountType_[$i],
+          $mountOpts_[$i]);
+
+    if ($ret != 0) {
+      next; # error already logged
+    }
+
+    # Now run the mount command or swapon
+    $cmd = "";
+    if ($partitionTypes_[$i] eq TypeSwap) {
+      #run swapon
+      $cmd = "swapon $newPartNames[$i]";
+    } elsif ($partitionTypes_[$i] eq TypeLinux) {
+      #run mount
+      $cmd = "mkdir -p $mountPoints_[$i]; ".
+          "mount $mountPoints_[$i]; rm -rf $mountPoints_[$i]/lost+found";
+    }
+
+    printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
+    system ($cmd);
+    $partitionName_[$i] = $newPartNames[$i];
+  }
+
+  return $status;
+}
+
+sub PartitionDisks( $ $ )
+{
+  my ($skipDisks, $array_reference) = @_;
+  my @swapOn = @$array_reference;
+
+  printf "%s: PartitionDisks: disks to skip: %s\n",
+      scalar(localtime()), $skipDisks;
+
+  # space needed is 
+  #   partition 1: swap 2x memory
+  #   partition 2: 2x Memory (cores)
+  #   partition 3: 10G (logs)
+
+  open (FDISK, "fdisk -l 2>/dev/null |");
+
+  my $createPartitions = 1;
+  while (<FDISK>) {
+    my $line =  $_;
+    
+    next if ($line =~ /$skipDisks/);
+
+    if ($line =~ /Disk (\/.*): (.*) (\d+) bytes/) {
+      my $disk = $1;
+      my $diskSize = $3;
+
+      printf "%s: Checking if $disk has any swap mounted\n",
+            scalar(localtime());
+      my $ret = RemoveFromSwap ($disk, \@swapOn);
+      if ($ret < 0) {
+        next; # failed to remove from swap
+      }
+
+      # try to fit the partitions into the disk.
+      if ($createPartitions == 1) {
+        $ret = CreateReqdPartitions ($disk, $diskSize);
+        if ($ret == 0) {
+          # done creating partions, now remove all partitions
+          # from the other disks so the mfs can get maximum space
+          $createPartitions = 0;
+        }
+      } else {
+        # remove all partitions
+        GetAllPartitions ($disk, 1);
+        AddToDiskSetup ($disk);
+      }
+    }
+  }
+
+  close (FDISK);
+}
+
+# Get a list of disks managed by lvm
+sub GetLvmDisks ()
+{
+  my $disks = "";
+
+  my $cmd = "pvs -o pv_name";
+  printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
+  my @lvmDisks = `$cmd`;
+
+  my $ret = $?;
+  if ( $ret != 0) {
+    printf "%s: [INFO] $cmd failed: returned $ret (probably no LVM)\n",
+      scalar(localtime());
+    return $disks;
+  }
+
+  foreach my $line (@lvmDisks) {
+    printf ("[pvs o/p] %s\n", $line);
+
+    $line =~ s/^\s+//; #remove leading spaces
+    $line =~ s/\s+$//; #remove trailing space
+    my @arr = split (/\s+/, $line);
+
+    my $len = scalar (@arr);
+    next if ($len == 0);
+
+    my $device = $arr[0];
+    next if ($device !~ m#^/#); # skip if it doesn't start with a "/"
+
+    $device =~ s/\d+$//;
+
+    if (length($disks) > 0) {
+      $disks = $disks . "|";
+    }
+
+    $disks = $disks . $device;
+  }
+
+  return $disks;
+}
+
+sub VerifySpace ($)
+{
+  my $disk = "";
+  my ($idx) = @_;
+
+  my $path = $mountPoints_[$idx];
+  my @out = `df -klTP $path`;
+
+  my $spaceReqd = $partitions_[$idx];
+  printf "[DEBUG] $idx: @partitions_ \n";
+
+  $spaceReqd *= 1024; # in KB
+
+  foreach my $line (@out) {
+    my ($dev, $fsType, $total, $used, $avail, $percent, $mountedOn) =
+        split (/\s+/, $line);
+
+    next if ($dev !~ m#^/#); # skip if it doesn't start with a "/"
+
+    if ($path eq $mountedOn || $avail >= $spaceReqd) {
+      printf "%s [INFO] %s has enough space or is already a mount point ".
+          "(path=%s,mnt=%s), reqd=%d, avail=%d\n",
+              scalar(localtime()), $dev, $path, $mountedOn, $spaceReqd, $avail;
+
+      $disk = $dev;
+      if ($dev =~ /(.*)(\d+)/) {
+        $disk = $1; # skip the partition numbers
+      }
+
+      # set the corresponding size to 0
+      $partitions_[$idx] = 0;
+
+      last;
+    }
+  }
+
+  return $disk;
+}
+
+# checks the allocated space for our mounts
+# and returns disks that can be excluded
+sub CheckForSpace()
+{
+  my $mntDisks = "";
+  my $numMnts = scalar (@mountPoints_);
+
+  for (my $i = 0; $i < $numMnts; $i++) {
+    my $size = $partitions_[$i];
+    my $type = $partitionTypes_[$i];
+
+    next if ($size <= 0);
+    next if ($type ne TypeLinux);
+
+    my $disk = VerifySpace ($i);
+    if (length ($disk) > 0) {
+      if (length ($mntDisks) > 0) {
+        $mntDisks = $mntDisks . "|";    
+      }
+
+      $mntDisks = $mntDisks . $disk;
+    }
+  }
+
+  return $mntDisks;
+}
+
+sub HasPattern ($ $)
+{
+  my $found = 0;
+  my ($pattern, $array_reference) = @_;
+  my @ifConfigOut = @$array_reference;
+
+  foreach my $line (@ifConfigOut) {
+    if ($line =~ /$pattern/) {
+      printf "%s: [INFO] found %s in ifconfig: line=%s\n",
+          scalar(localtime()), $pattern, $line;
+
+      $found = 1;
+      last;
+    }
+  }
+
+  return $found;
+}
+
+# returns 1 if found
+sub HasIP ($)
+{
+  my ($ipList) = @_;
+
+  my $cmd = "ifconfig -a";
+  printf ("%s: [INFO] Running cmd: %s\n", scalar(localtime()), $cmd);
+
+  my @out = `$cmd`;
+  if ($? != 0) {
+    return 0;
+  }
+
+  my $pattern = "";
+  my @ips = split (/,/, $ipList);
+
+  foreach my $ip (@ips) {
+    if (length ($pattern) > 0) {
+      $pattern = $pattern . "|";
+    }
+
+    $pattern = $pattern . "addr:$ip";
+  }
+
+  printf "%s: [INFO] looking for %s in ifconfig: @out\n",
+      scalar(localtime()), $pattern;
+
+  my $found = 0;
+  if (HasPattern ($pattern, \@out) == 1) {
+    $found = 1;
+  }
+
+  return $found;
+}
+
+sub CheckDisksAndPartition($ $)
+{
+ my ($skipDisks, $unMountPaths) = @_;
+
+ my $lvmDisks = GetLvmDisks();
+ if (length($lvmDisks) > 0) {
+   if (defined $skipDisks && length ($skipDisks) > 0) {
+     $skipDisks = $skipDisks . "|";
+   }
+
+   printf "%s [INFO] skipping lvm disks: %s\n",
+       scalar(localtime()), $lvmDisks;
+
+   $skipDisks = $skipDisks . $lvmDisks;
+ }
+
+ # check if we have enough space in /opt/mapr/logs & /opt/cores
+ my $foundMounts = CheckForSpace();
+ if (length($foundMounts) > 0) {
+   if (defined $skipDisks && length ($skipDisks) > 0) {
+     $skipDisks = $skipDisks . "|";
+   }
+
+   printf "%s [INFO] skipping %s disks (has space for our mounts)\n",
+       scalar(localtime()), $foundMounts;
+ 
+   $skipDisks = $skipDisks . $foundMounts;
+ }
+
+ # 1. optionally install the packages [optimized install]
+ #
+ # 2. unmount the non-root /mnt & create:
+ #   partition 1: swap 2x memory
+ #   partition 2: 2x Memory (cores)
+ #   partition 3: 10G (logs)
+ #
+ # 3. 
+ #   a. swapon partition1
+ #   b. mount p2 /opt/cores
+ #   b. mount p3 /opt/mapr/logs
+ #
+ 
+ #
+ # 1. first unmount any devices we dont need (from df)
+ #
+ my $systemPaths = "/bin|/boot|/dev|/etc|/home|/lib|/proc|/sbin|/sys|/usr|/var";
+ 
+ my $lineNum = 0;
+ open (DF, "df -khlTP |");
+ while (<DF>) {
+   my $currLine = $_;
+   $lineNum++;
+   
+   # log the df output
+   printf ("%s: [DF] %s", scalar(localtime()), $currLine);
+ 
+   my ($dev, $fsType, $total, $used, $avail, $percent, $mountedOn) =
+         split (/\s+/, $currLine);
+ 
+   # skip non-ext*
+   if ($fsType =~ /tmpfs/ || $lineNum == 1) {
+     next;
+   }
+ 
+   my $device = $dev;
+   if ($dev =~ /(.*)(\d+)/) {
+     $device = $1; # skip the partition numbers
+   }
+ 
+   printf ("%s: found $dev mounted on: $mountedOn\n", scalar(localtime()));
+ 
+   # if -u is not specified, we unmount everything (except /)
+   my $skip = 0;
+   if ($mountedOn eq "/") {
+     printf "%s: skipping $device: mounted on $mountedOn\n",
+         scalar(localtime());
+     $skip = 1;
+   } elsif ($mountedOn =~ /$systemPaths/) {
+     printf "%s: skipping $device: (m=%s) found in systemPaths $systemPaths\n",
+         scalar(localtime()), $mountedOn;
+     $skip = 1;
+   } elsif (defined $skipDisks && $device =~ /$skipDisks/) {
+     printf "%s: skipping $device: found in skipList $skipDisks\n",
+         scalar(localtime());
+     $skip = 1;
+   } elsif ((! defined $unMountPaths) ||
+            (defined $unMountPaths && $mountedOn =~ /$unMountPaths/))
+   {
+     # we will be re-partioning this disk: so make sure that it
+     # doesn't have mounts or swap on it.
+     printf ("%s: [INFO] unmounting $mountedOn\n", scalar(localtime()));
+ 
+     my $ret = system ("umount -f $mountedOn");
+     $ret = $ret >> 8; #exit status
+     if ($ret != 0) {
+       printf ("%s: [Error] unmounting %s\n", scalar(localtime()), $mountedOn);
+       $skip = 1;
+     } else {
+       # success
+       printf ("%s:[INFO] unmounted $mountedOn\n", scalar(localtime()));
+ 
+       # remove from fstab
+       RemoveFromFstab ($mountedOn);
+     }
+   } else {
+     $skip = 0;
+   }
+ 
+   if ($skip == 1) {
+     if (defined $skipDisks) {
+       $skipDisks = $skipDisks . "|";
+     }
+ 
+     $skipDisks = $skipDisks . "$device";
+   }
+ }
+ 
+ close (DF);
+ 
+ # if the machine already has "enough" swap, skip adding a swap partition
+ my @swapOn = `swapon -s`;
+ printf ("%s: [swapon -s]\n@swapOn", scalar(localtime()));
+ 
+ my $foundSwapKB = 0;
+ foreach my $line (@swapOn) {
+   $line =~ s/^\s+//; #remove leading spaces
+   $line =~ s/\s+$//; #remove trailing space
+ 
+   my ($dev, $type, $size, $used, $priority) = split (/\s+/, $line);
+ 
+   my $device = $dev;
+   next if ($device !~ m#^/#); # skip if it doesn't start with a "/"
+ 
+   $device =~ s/\d+$//;
+ 
+   printf "%s: found a swap device %s (adding to skip list)\n",
+           scalar(localtime()), $device;
+ 
+   if (defined $skipDisks) {
+     $skipDisks = $skipDisks . "|";
+   }
+ 
+   $skipDisks = $skipDisks . "$device";
+   $foundSwapKB += $size;
+ }
+ 
+ # enough swap = 60% physical memory ?
+ my $enoughSwap = int (0.6 * $totMemKB_);
+ if ($foundSwapKB > $enoughSwap) {
+   printf "%s: [INFO] found enough swap: skipping swap addition: %d\n",
+       scalar(localtime()), $foundSwapKB;
+ 
+   # dont add a new swap
+   my $i = 0;
+   my $numElements = scalar (@partitions_);
+ 
+   for (my $i=0; $i < $numElements; $i++) {
+     if ($partitionTypes_[$i] eq TypeSwap) {
+       $partitions_[$i] = 0; # dont allocate swap
+     }
+   }
+ } else {
+   printf "%s: [INFO] did not find enough swap (%d), adding more swap\n",
+       scalar(localtime()), $enoughSwap;
+ }
+ 
+ if (defined $skipDisks) {
+   printf "%s: [INFO] excluded disks: $skipDisks\n",
+       scalar(localtime());
+ }
+ 
+ #
+ # 2. Next find a disk from fdisk that we can put our partitions on.
+ #  In fdisk output skip the skipDisks & partition the rest
+ PartitionDisks ($skipDisks, \@swapOn);
+}
+
+sub RunCmd ($)
+{
+  my ($cmd) = @_;
+  printf ("%s: [INFO]: Running: $cmd\n", scalar(localtime()));
+
+  my $ret = system ($cmd);
+  $ret = $ret >> 8;
+  return $ret;
+}
+
+sub SetupAndStartNTP()
+{
+  my $ntpBinary;
+  my $ntp;
+
+  if (-f "/etc/init.d/ntp") {
+    $ntpBinary = "/etc/init.d/ntp"; # ubuntu
+    $ntp = "ntp";
+  } elsif (-f "/etc/init.d/ntpd") {
+    $ntpBinary = "/etc/init.d/ntpd"; # redhat/centos
+    $ntp = "ntpd";
+  } else {
+    printf "%s: [WARN]: ntp/ntpd not found (skipping ntp setup)\n",
+        scalar(localtime());
+    return 1;
+  }
+
+  my $cmd = "which update-rc.d";
+  if (RunCmd($cmd) == 0) {
+    # ubuntu
+    $cmd = "update-rc.d $ntp defaults";
+    RunCmd ($cmd);
+  } elsif (RunCmd("which chkconfig") == 0) {
+    # redhat/centos
+    $cmd = "chkconfig --level 345 $ntp on";
+    RunCmd ($cmd);
+  } else {
+    printf "%s: [WARN]: update-rc.d/chkconfig not found (skipping ntp setup)\n",
+        scalar(localtime());
+    return 1;
+  }
+
+  # start it up
+  $cmd = $ntpBinary . " start";
+  RunCmd ($cmd);
+
+  return 0;
+}
+
+#######
+# main
+#######
+
+printf ("%s: Perl version: %vd\n", scalar(localtime()), $^V);
+
+
+my $whoami = `id`;
+printf ("Running as: %s\n", $whoami);
+
+printf ("%s: args = @ARGV\n", scalar(localtime()));
+
+my $path = $ENV{"PATH"};
+
+# add /sbin & /usr/sbin to the path
+$path = $path . ":/sbin:/usr/sbin";
+$ENV{"PATH"} = $path;
+
+# Options
+#  d: dont create swap & other partitions
+#  n: cldb info
+#  s: skip these disks (| separated)
+#  u: unmount these
+#  z: zookeeper info
+
+my %options=();
+getopts("dn:s:u:z:c:", \%options);
+
+my $cldbInfo = $options{n};
+my $zkInfo = $options{z};
+my $clusterName = $options{c};
+my $unMountPaths = $options{u};
+my $skipDisks = $options{s};
+
+my $partitionsCreate = 1;
+
+if (defined $options{d}) {
+  $partitionsCreate = 0;
+}
+
+
+# Set ulimit to sane value
+my $cmd = "ulimit -u unlimited 2>/dev/null; ulimit -n 1000000 2>/dev/null; ulimit -n";
+printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
+my $ret = system ($cmd);
+
+$ret = $ret >> 8;
+if ( $ret != 0) {
+  printf "%s: [ERROR] $cmd failed: returned $ret\n",
+      scalar(localtime());
+  # ignore & continue
+}
+
+# 1. Check Disks & create partitions for swap/cores/logs
+# 2. echo "0" > /proc/sys/vm/overcommit_memory
+# 3. do the diskssetup.sh -F
+# 4. do the configure.sh
+#
+# 5. if ubuntu 10.10 && /etc/default/irqbalance
+#      set ENABLED=0 (needs reboot)
+#
+
+if ($partitionsCreate == 1) {
+  CheckDisksAndPartition($skipDisks, $unMountPaths);
+} else {
+  printf ("%s: [INFO] Skip creating partitions\n", scalar(localtime()));
+}
+
+#
+# 3. set overcommit & disable irqbalance on ubuntu10.10
+#
+$cmd = "echo 0 > /proc/sys/vm/overcommit_memory";
+printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
+$ret = system ($cmd);
+
+$ret = $ret >> 8;
+if ( $ret != 0) {
+  printf "%s: [ERROR] $cmd failed: returned $ret\n",
+      scalar(localtime());
+  # ignore & continue
+}
+
+printf "%s: [INFO] Looking to turn off irqbalance (only on ubuntu 10.10)\n",
+    scalar(localtime());
+$cmd = 'grep -i "Ubuntu 10.10" /etc/issue';
+printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
+$ret = system ($cmd);
+
+$ret = $ret >> 8;
+if ($ret == 0) {
+  $cmd = 'egrep ENABLED=\"?1\"? /etc/default/irqbalance';
+  $ret = system ($cmd);
+  printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
+
+  $ret = $ret >> 8;
+  if ( $ret == 0) {
+    # exists: change it to 0
+    printf ("%s: [INFO] Turning off irqbalance\n", scalar(localtime()));
+  
+    $cmd = 'sed -i s/ENABLED=\"*1\"*.*/ENABLED=\"0\"/ /etc/default/irqbalance';
+    printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
+    my $ret = system ($cmd);
+
+    $ret = $ret >> 8;
+    if ( $ret != 0) {
+      printf ("%s: [ERROR] $cmd failed: returned $ret\n", scalar(localtime()));
+      # ignore & continue
+    } else {
+      # needs reboot !! but lets just kill irqbalance for now
+      $cmd = "pkill irqbalance";
+      printf "%s: [INFO] Stopping irqbalance: Running cmd: $cmd\n",
+          scalar(localtime());
+      system ($cmd);
+    }
+  }
+}
+
+#
+# 4. Run configure.sh & diskssetup.sh
+#
+my $tempClusterConf = 0;
+use constant ClustersConf => "/opt/mapr/conf/mapr-clusters.conf";
+
+if (defined $cldbInfo && defined $zkInfo) {
+  printf "%s: CLDB Info: %s, ZK info: %s\n",
+        scalar(localtime()), $cldbInfo, $zkInfo;
+
+  # note, we expect that the user mapr has already been created
+  $cmd = "/bin/bash /opt/mapr/server/configure.sh -C $cldbInfo -Z $zkInfo -N $clusterName -u root -g root --isvm";
+  printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
+  $ret = system ($cmd);
+
+  $ret = $ret >> 8;
+  if ( $ret != 0) {
+    printf "%s: [ERROR] $cmd failed: returned $ret\n",
+        scalar(localtime());
+  }
+} else {
+  printf "%s: [INFO] Creating temp %s\n",
+        scalar(localtime()), ClustersConf;
+
+  $tempClusterConf = 1;
+
+  $cmd = "echo default localhost > " . ClustersConf;
+  printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
+  $ret = system ($cmd);
+
+  $ret = $ret >> 8;
+  if ( $ret != 0) {
+    printf "%s: [ERROR] $cmd failed: returned $ret\n",
+        scalar(localtime());
+  }
+}
+
+# TODO: run the disksssetup.sh (or equivalent) to get the list of
+# devices..
+if (-e "/opt/mapr/server/discoverRawDisks" ) {
+  @disksForSetup_ = `/opt/mapr/server/discoverRawDisks | grep -v "^#" `;
+
+  printf "%s: using disks from discoverRawDisks: @disksForSetup_",
+    scalar(localtime());
+}
+
+printf "%s: [INFO] disks for diskssetup.sh: @disksForSetup_\n",
+    scalar(localtime());
+
+# whirr keeps its logs in /tmp, so create it there
+use constant DisksFile => "/tmp/disks.list";
+open DISKS, ">" . DisksFile;
+foreach my $d (@disksForSetup_) {
+  chomp ($d);
+  print DISKS "$d\n";
+}
+close (DISKS);
+
+$cmd = "/opt/mapr/server/disksetup -C -F " . DisksFile;
+if (-e "/opt/mapr/server/diskssetup.sh") {
+  # earlier command name
+  $cmd = "/opt/mapr/server/diskssetup.sh -F -D " . DisksFile;
+}
+
+printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
+$ret = system ($cmd);
+
+$ret = $ret >> 8;
+if ( $ret != 0) {
+  printf "%s: [ERROR] $cmd failed: returned $ret\n",
+      scalar(localtime());
+}
+
+if ($tempClusterConf == 1) {
+  printf "%s: [INFO] Removing temp %s\n",
+      scalar(localtime()), ClustersConf;
+
+  unlink (ClustersConf);
+}
+
+SetupAndStartNTP();
+
+printf ("%s: done executing %s\n", scalar(localtime()), $0);
+exit 0;
+
+#####
+# END
+#####

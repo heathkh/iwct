@@ -1,0 +1,59 @@
+# TODO(heathk): using shell instead of service to workaround for ansible bug... should go back to service after upgrading ansible
+- name: Try to stop warden
+  shell: service mapr-warden stop
+  ignore_errors: yes
+  
+- name: Ensure warden pid cleaned up
+  file: path=/opt/mapr/logs/warden.pid state=absent
+    
+- name: Try to stop zookeeper (on master)
+  shell: service mapr-zookeeper stop
+  when: set $is_master
+  ignore_errors: yes
+  
+- name: Wait for zookeeper to shutdown
+  wait_for: port=5181 delay=5 state=stopped
+  when: set $is_master
+  
+- name: Set unique MapR Host ID (if needed)
+  shell: /opt/mapr/server/mruuidgen > /opt/mapr/hostid creates=/opt/mapr/hostid
+
+- name: Set unique MapR Host ID permissions
+  file: path=/opt/mapr/hostid mode=0444
+
+- name: Log unique MapR Host ID
+  shell: cp /opt/mapr/hostid /opt/mapr/conf/hostid.$$
+  
+  name: Set MapR hostname (if not yet defined)
+  shell: hostname -f > /opt/mapr/hostname creates=/opt/mapr/hostname
+  
+- name: Configure MapR node (setup disks, etc)
+  script: configure_mapr -n $master_ip -z $master_ip -c $cluster_name
+    
+- name: Try to start zookeeper (on master)
+  shell: service mapr-zookeeper start
+  when: set $is_master
+  ignore_errors: yes
+  
+- name: Wait for zookeeper to start
+  wait_for: port=5181 delay=5 state=started
+  when: set $is_master
+
+- name: Ensure warden pid cleaned up
+  file: path=/opt/mapr/logs/warden.pid state=absent
+    
+- name: Try to start warden
+  shell: service mapr-warden start
+  ignore_errors: yes
+
+# Hack required for MapR V2.1.3 - ?      
+# for some reason, warden often starts and dies shortly thereafter... use monit to keep it running...      
+- name: Install monit 
+  apt: pkg=monit
+  
+- name: Copy monit template to keep warden going
+  copy: src=monitrc dest=/etc/monit/monitrc owner=root group=root
+  
+- name: Ensure monit is running and watching warden
+  service: name=monit state=restarted  
+    
