@@ -173,11 +173,11 @@ class Ec2Cluster():
   def wait_for_instances(self, instance_ids, timeout=600):
     start_time = time.time()
     
-    while True:
-      reservation = self._ec2Connection.get_all_instances(instance_ids)
+    while True:      
       if (time.time() - start_time >= timeout):
         raise TimeoutException()
       try:
+        reservation = self._ec2Connection.get_all_instances(instance_ids)
         if self._all_started(reservation):
           break
       # don't timeout for race condition where instance is not yet registered
@@ -528,9 +528,6 @@ class Ec2Cluster():
       self._ec2Connection.create_security_group(role_group_name,
         "Role %s (%s)" % (role, self._name))
     return
-
-  
-
   
   def _delete_security_groups(self):
     """
