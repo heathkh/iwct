@@ -7,21 +7,31 @@ from snap.pyglog import *
 def main(argv):
   
   if (len(sys.argv) < 2):    
-    print 'Usage:\n create <num_instances> \n resize <num_instance> \n destroy \n push_config \n reset \n config_client \n config_lazy \n cluster_ui_urls' 
+    print 'Usage:'
+    print ' urls - Print the urls Web UI'
+    print ' create <num_instances> - Launch a cluster with N nodes'
+    print ' resize <num_instance> - Resize a cluster to have N nodes'
+    print ' destroy <num_instance> - Shutdown all nodes (warning: all data on maprfs:// is destroyed)'
+    print ' see source for additional experimental commands...'     
     return 1
   cmd = sys.argv[1]  
   cluster = mapr.MaprCluster(config.GetConfiguration())
-    
-  if cmd == 'create':
+  
+  if cmd == 'urls':    
+    cluster.ShowUiUrls()  
+  elif cmd == 'create':
     assert(len(sys.argv) == 3)    
     num_instances = long(sys.argv[2])
-    cluster.Create(num_instances) 
+    cluster.Create(num_instances)
+    cluster.ShowUiUrls()
   elif cmd == 'resize':    
     assert(len(sys.argv) == 3)    
     num_instances = long(sys.argv[2])
-    cluster.Resize(num_instances)       
+    cluster.Resize(num_instances)
+    cluster.ShowUiUrls()
   elif cmd == 'destroy':
     cluster.Destroy()
+  # Experimental commands  
   elif cmd == 'push_config':
     cluster.PushConfig()      
   elif cmd == 'reset':
@@ -29,9 +39,7 @@ def main(argv):
   elif cmd == 'config_client':
     cluster.ConfigureClient()  
   elif cmd == 'config_lazy':
-    cluster.ConfigureLazyWorkers()
-  elif cmd == 'cluster_ui_urls':
-    cluster.ShowUiUrls()  
+    cluster.ConfigureLazyWorkers()  
   elif cmd == 'debug':
     cluster.Debug()        
   elif cmd == 'get_property':

@@ -7,16 +7,19 @@ import os
 from snap.pyglog import *
 
 def main():
-  role = 'workstation'
+  #role = 'workstation'
   #role = 'master'
-  #role = 'worker'
-  #virt_type = 'hvm'
-  virt_type = 'pv'
+  role = 'worker'
+  virt_type = 'hvm'
+  #virt_type = 'pv'
   region_name = 'us-east-1'
   ubuntu_release_name = 'precise'
   mapr_version = 'v2.1.3'
+  
+  #########################################################################
   instance_type = None
   if role == 'workstation':
+    CHECK_EQ(virt_type, 'pv', 'workstation must use virt_type pv')
     instance_type = 'c1.xlarge'
   else:
     virt_type_to_instance_template_type = {'pv' : 'c1.xlarge', 'hvm' : 'cc2.8xlarge'}
@@ -25,7 +28,7 @@ def main():
   ec2 = EC2Connection(region = util.GetRegion(region_name))
   ami_spec = manager.AmiSpecification(region_name, instance_type, ubuntu_release_name, mapr_version, role)
   
-  keypair_name = 'cirrus_ami_maker'
+  keypair_name = 'cirrus_ami_maker_tmp_2'
   key_dir_path = os.path.expanduser('~/ec2/')
   private_key_filename = '%s/%s.pem' % (key_dir_path, keypair_name)
   if not os.path.exists(key_dir_path):
