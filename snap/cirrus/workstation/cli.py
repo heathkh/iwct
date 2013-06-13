@@ -3,7 +3,7 @@ import sys
 import os
 
 # HACK: On bebo python env is messed up... this makes sure we find the modules
-project_root = os.path.abspath(os.path.dirname(__file__) + '/../../../')
+project_root = os.path.abspath(os.path.dirname(__file__) + '/../../../../')
 sys.path = [project_root, project_root + '/build', project_root + '/build/snap'] + sys.path
 #print sys.path
 
