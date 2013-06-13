@@ -5,27 +5,10 @@
     - name: Generate key for root
       user: name=root generate_ssh_key=yes
       
-    - name: Set password for root user (needed for webui login)
+    - name: Set password for root user (needed for MapR Web UI login)
       user: name=root password=$root_password_hash
   
-    - name: Ensure warden is stopped
-      service: name=mapr-warden state=stopped
-      ignore_errors: yes
-      
-    - name: Ensure zookeeper is stopped
-      service: name=mapr-zookeeper state=stopped
-      ignore_errors: yes
-  
-    - name: setup node
-      script: setup_node -n $master_ip -z $master_ip
-      
-    - name: Ensure zookeeper is started
-      service: name=mapr-zookeeper state=started
-      ignore_errors: yes
-      
-    - name: Ensure warden is started
-      service: name=mapr-warden state=started
-      ignore_errors: yes
+    - include: configure_mapr.yml
         
     - name: Wait for MapR CLDB to be available
       wait_for: port=7222 delay=5 timeout=600 # wait up to 10 minutes
@@ -45,8 +28,8 @@
       command:  maprcli config save -values "{\"cldb.default.volume.topology\":\"/data\"}"
       ignore_errors: yes
       
-    #- name: Setup MapR root user
-    #  command:  maprcli acl edit -type cluster -user root:fc
+    - name: Setup MapR root user
+      command:  maprcli acl edit -type cluster -user root:fc
         
     - name: install ganglia config
       template: src=gmetad.conf.j2 dest=/etc/ganglia/gmetad.conf owner=root group=root

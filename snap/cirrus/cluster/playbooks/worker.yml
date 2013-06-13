@@ -3,34 +3,12 @@
   gather_facts: False  
   sudo: yes         
   tasks:
-    - name: Allow shared key ssh from master to worker
+    - name: Setup passwordless ssh from master to workers
       authorized_key: user=root key="$master_pub_key"
     
-    - name: Ensure warden is stopped
-      command: service mapr-warden stop
-      ignore_errors: yes
+    - include: configure_mapr.yml
       
-    - name: Ensure warden pid cleaned up
-      command: rm -rf /opt/mapr/logs/warden.pid
-      ignore_errors: yes    
-      
-    - name: setup node
-      script: setup_node -n $master_ip -z $master_ip > /dev/null 2>&1
-      
-    - name: Copy monit template
-      copy: src=monitrc dest=/etc/monit/monitrc owner=root group=root
-    
-#    - name: Ensure warden is started
-#      command: service mapr-warden start
-#      ignore_errors: yes
-    
-    - name: Install monit 
-      apt: pkg=monit
-      
-    - name: Ensure monit is running to watch warden
-      service: name=monit state=restarted  
-      
-    - name: Waiting for task tracker started  
+    - name: Waiting for task tracker started
       wait_for: port=50060  
       
     - name: install gmond.conf
