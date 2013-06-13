@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 from snap import boto
 from snap.boto import exception
 from snap.boto.ec2 import connection
@@ -37,6 +35,8 @@ from snap.ansible import inventory
 from snap.ansible import runner
 from snap.ansible.utils import plugins
 
+
+
 tested_region_names = ['us-east-1', 'us-west-1']
 valid_instance_roles = ['workstation', 'master', 'worker']
 hpc_instance_types = ['cc1.4xlarge', 'cc2.8xlarge', 'cr1.8xlarge']
@@ -45,7 +45,7 @@ workstation_security_group = 'cirrus_workstation'
 
 def GetNumCoresOnHosts(hosts, private_key):
   results = runner.Runner(host_list = hosts,                                    
-                                 forks=10,
+                                 #forks=1, # when forks > 1 we have errors
                                  private_key = private_key,
                                  module_name='setup',                                 
                                  ).run()
@@ -78,7 +78,7 @@ def RunPlaybookOnHosts(playbook_path, hosts, private_key, extra_vars = None):
                             stats = stats,
                             callbacks = playbook_cb,
                             runner_callbacks = runner_cb,    
-                            forks = 1,  # If more than one process is used, there is a race condition that can cause Error 11 to be raised
+                            #forks = 1,  # If more than one process is used, there is a race condition that can cause Error 11 to be raised
                             extra_vars = extra_vars                        
                             )
   results = pb.run()      
@@ -508,6 +508,8 @@ def __WaitForInstance(instance, desired_state):
       if state == desired_state:
         break
     except boto.exception.EC2ResponseError as e:
+      LOG(INFO, e)
+    except boto.exception.ResponseError as e:  #This may be an alias of EC2ResponseError
       LOG(INFO, e)
     time.sleep(5)
   print 'done'
