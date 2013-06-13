@@ -565,14 +565,24 @@ class Runner(object):
 
     # *****************************************************
 
-
+    import time
     def _parallel_exec(self, hosts):
         ''' handles mulitprocessing when more than 1 fork is required '''
 
         manager = multiprocessing.Manager()
-        job_queue = manager.Queue()
+        job_queue = None
+        while not job_queue:
+          try:
+            job_queue = manager.Queue()
+          except:
+            pass
+          print 'error... will retry...'
+          time.sleep(2)
+          
+          
         for host in hosts:
             job_queue.put(host)
+            
         result_queue = manager.Queue()
 
         workers = []

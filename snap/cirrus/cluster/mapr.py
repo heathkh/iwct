@@ -2,28 +2,28 @@
 Classes for running sector sphere service on a cluster.
 """
 from multiprocessing import Pool
+from passlib.hash import sha256_crypt
 from snap import ansible
 from snap.ansible import callbacks
 from snap.ansible import inventory
 from snap.ansible import playbook
 from snap.ansible import utils
 from snap.ansible.utils import plugins
+from snap.boto.ec2.connection import EC2Connection
+from snap.boto.s3.connection import S3Connection
 from snap.cirrus import util
 from snap.pert import py_pert
 from snap.pyglog import *
 from string import Template
-from snap.boto.ec2.connection import EC2Connection
-from snap.boto.s3.connection import S3Connection
 import ec2cluster
 import os
-import stat
 import re
 import requests
+import stat
 import subprocess
 import time
-import urllib2
-#import hashlib
 import time 
+import urllib2
 
 class MaprClusterConfig(object):
   """
@@ -58,8 +58,7 @@ class MaprCluster(object):
     dst_regions = util.tested_region_names    
     config_bucketname = 'cirrus_cluster_config'
     self.ssh_key = util.InitKeypair(self.ec2, self.s3, config_bucketname, self.cluster_keypair_name, src_region, dst_regions)
-    
-    # make sure we have a local copy of private ssh key so we can connect
+    # make sure we have a local copy of private ssh key so we can connect easily from command line
     cluster_ssh_key_path = os.path.expanduser('~/keys/%s.pem' % self.cluster_keypair_name )
     #LOG(INFO, 'Placing cluster ssh key here: %s' % (cluster_ssh_key_path) )
     if not os.path.exists(os.path.dirname(cluster_ssh_key_path)):      
@@ -76,9 +75,10 @@ class MaprCluster(object):
      return availability_zone_name
  
   def Create(self, num_instances):
-    if self.__StartMaster():
-      self.Resize(num_instances)
-      self.PushConfig()
+    if not self.__StartMaster():
+      return    
+    self.Resize(num_instances)
+    self.PushConfig()    
     return True
   
   def Resize(self, num_instances):
@@ -89,9 +89,7 @@ class MaprCluster(object):
       LOG(INFO, 'num_to_add: %d' % (num_to_add)) 
       self.__AddWorkers(num_to_add)
     elif num_spotworkers > num_instances:  
-      #num_to_remove = num_spotworkers - num_instances
-      print num_spotworkers
-      assert(False) # not yet implemented            
+      LOG(FATAL, 'Shrinking the cluster is not yet supported. File a feature request.')            
     self.__FixCachePermissions()
     return
     
@@ -107,8 +105,9 @@ class MaprCluster(object):
     num_cores = self.GetNumCoresPerWorker()
     num_map_slots = num_cores
     num_reduce_slots = num_cores - 1
-    self.__ReconfigureTaskTrackers(instances, num_map_slots, num_reduce_slots)
-    self.__ReconfigureJobTracker()    
+    master = self.__GetMasterInstance()
+    CHECK(self.__ConfigureMapredSite([master], num_map_slots, num_reduce_slots))
+    CHECK(self.__RestartTaskTrackers(instances))    
     return
   
   def Reset(self):
@@ -117,7 +116,7 @@ class MaprCluster(object):
     #self.__RunCommandOnInstances('sudo killall -9 maprcli', [master_instances])
     instances = self.__GetCldbRegisteredWorkerInstances()    
     #self.__RunCommandOnInstances('sudo service mapr-warden restart', instances)
-    self.__RestartTaskTrackers(instances)
+    CHECK(self.__RestartTaskTrackers(instances))
     self.__RestartJobTracker()
     return
   
@@ -135,49 +134,18 @@ class MaprCluster(object):
     print 'cluster_ram_url: %s' % (cluster_ram_url)
     print 'cluster_net_url: %s' % (cluster_net_url)
     return
-  
-  def __ReconfigureTaskTrackers(self, instances, num_map_slots, num_reduce_slots):
-    self.__ConfigureMapredSite(instances, num_map_slots, num_reduce_slots)
-    time.sleep(1)
-    self.__RestartTaskTrackers(instances)
-    return
 
-  def __ReconfigureJobTracker(self, num_map_slots, num_reduce_slots):
-    master = self.__GetMasterInstance()
-    self.__ConfigureMapredSite([master], num_map_slots, num_reduce_slots) 
-    time.sleep(1)
-    self.__RestartJobTracker()
-    return
-
-#   def GetNumCoresPerTaskTracker(self):
-#     #TODO(heathkh): simplify with max and min functions
-#     num_cores = None
-#     for _ in range(60):
-#       num_cores_list = self.GetProperty('cores_summary')      
-#       CHECK(num_cores_list, 'task trackers must be running before checking number of cores')  
-#       min_num_cores = min(num_cores_list)
-#       max_num_cores = max(num_cores_list)      
-#       if min_num_cores != max_num_cores:
-#         LOG(INFO, 'detected invalid number of cores... trying again: %s' % (num_cores_list))
-#         time.sleep(5)
-#       else:
-#         num_cores = max_num_cores
-#         break
-#     return num_cores
-  
   def GetNumCoresPerWorker(self):
     hosts = self.__InstancesToHostnames(self.__GetWorkerInstances())
     CHECK_GE(len(hosts), 1)
     # construct the ansible runner and execute on all hosts
     num_cores_list = util.GetNumCoresOnHosts(hosts, self.ssh_key)
-    print num_cores_list
     min_num_cores = min(num_cores_list)
     max_num_cores = max(num_cores_list)      
     if min_num_cores != max_num_cores:
-      LOG(FATAL, 'Expected all workers to have same number of cores: ' % (num_cores_list))      
+      LOG(FATAL, 'Expected all workers to have same number of cores: %s' % (num_cores_list))      
     num_cores = max_num_cores    
     return num_cores
-    
     
   def GetProperty(self, property_name):
     if property_name == 'slot_summary':    
@@ -197,22 +165,22 @@ class MaprCluster(object):
         slot_summary[host]['map_slots'] = map_slots
         slot_summary[host]['reduce_slots'] = reudce_slots
       return slot_summary
-    if property_name == 'cores_summary':    
-      params = {}
-      params['columns'] = 'cpus'
-      #params['filter'] = '[service==tasktracker]'
-      r = self.__MaprApi('node list', params)
-      print r
-      exit(0)
-      CHECK(r['status'], 'OK')
-      cores_summary = []   
-      prefetch_maptasks = 1.0 #mapreduce.tasktracker.prefetch.maptasks
-      CHECK('data' in r)
-      for item in r['data']:
-        host = item['ip']
-        cpus = long(item['cpus']) # mapr doesn't report the number of map slots but: num_maps_slots + map num_maps_slots * mapreduce.tasktracker.prefetch.maptasks 
-        cores_summary.append(cpus)
-      return cores_summary
+#     if property_name == 'cores_summary':    
+#       params = {}
+#       params['columns'] = 'cpus'
+#       #params['filter'] = '[service==tasktracker]'
+#       r = self.__MaprApi('node list', params)
+#       print r
+#       exit(0)
+#       CHECK(r['status'], 'OK')
+#       cores_summary = []   
+#       prefetch_maptasks = 1.0 #mapreduce.tasktracker.prefetch.maptasks
+#       CHECK('data' in r)
+#       for item in r['data']:
+#         host = item['ip']
+#         cpus = long(item['cpus']) # mapr doesn't report the number of map slots but: num_maps_slots + map num_maps_slots * mapreduce.tasktracker.prefetch.maptasks 
+#         cores_summary.append(cpus)
+#       return cores_summary
     if property_name == 'ram_summary':    
       params = {}
       params['columns'] = 'mtotal'
@@ -268,20 +236,6 @@ class MaprCluster(object):
     self.__WaitForUrlReady(job_tracker_url)
     return True
 
-#   def __ConfigureMapredSite(self, instances, num_map_slots, num_reduce_slots):
-#     if not instances:
-#       return
-#     map_slots_param = '%d' % (num_map_slots)
-#     reduce_slots_param = '%d' % (num_reduce_slots)
-#     # generate and distribute template
-#     filename = '/tmp/mapred-site.xml'
-#     conf_template = open(self.playbooks_path + 'mapred-site.xml.template').read()
-#     conf_file = open(filename, 'w')
-#     conf_file.write(Template(conf_template).substitute(map_slots_param=map_slots_param, reduce_slots_param=reduce_slots_param))
-#     conf_file.close()
-#     self.__CopyToInstancesRoot(filename, self.hadoop_conf_dir, instances)
-#     return
-  
   def __ConfigureMapredSite(self, instances, num_map_slots, num_reduce_slots):
     if not instances:
       return
@@ -290,8 +244,7 @@ class MaprCluster(object):
     extra_vars = {'map_slots_param': map_slots_param,
                   'reduce_slots_param': reduce_slots_param,
                   'hadoop_conf_dir' : self.hadoop_conf_dir}
-    CHECK(util.RunPlaybookOnHosts(self.playbooks_path + '/mapred-site.yml', self.__InstancesToHostnames(instances), self.ssh_key, extra_vars))
-    return
+    return util.RunPlaybookOnHosts(self.playbooks_path + '/mapred-site.yml', self.__InstancesToHostnames(instances), self.ssh_key, extra_vars)
   
   def ConfigureLazyWorkers(self):
     """ Lazy workers are instances that are running and reachable but failed to 
@@ -305,8 +258,7 @@ class MaprCluster(object):
     return
 
   def TerminateUnreachableInstances(self):
-    unreachable_instances = util.GetUnreachableInstances(self.__GetWorkerInstances(), 
-                                    self.ssh_key)    
+    unreachable_instances = util.GetUnreachableInstances(self.__GetWorkerInstances(), self.ssh_key)    
     print 'unreachable_instances: '
     print unreachable_instances
     self.cluster.terminate_instances(unreachable_instances)
@@ -324,14 +276,11 @@ class MaprCluster(object):
     #self.TerminateUnreachableInstances()
     #self.__ConfigureMaster()
     #self.__ConfigureGanglia()
-    #self.__ConfigureMaster()
+    self.__ConfigureMaster()
     #self.__ConfigureWorkers(self.__GetWorkerInstances())
     #print self.GetNumCoresPerWorker()
-    
     #self.ConfigureClient()
     #self.__SetWorkerTopology()
-
-    
     #self.__EnableNfsServer()
     return
   
@@ -366,13 +315,17 @@ class MaprCluster(object):
     num_masters = len(self.cluster.get_instances_in_role("master", "running"))
     CHECK_LT(num_masters, 1)
     LOG(INFO, "waiting for masters to start")          
-    self.__LaunchSpotMasterInstances()
+    #self.__LaunchSpotMasterInstances()
+    self.__LaunchOnDemandMasterInstances()
     time.sleep(1)
     self.__ConfigureMaster()
     return True
   
-  def ConfigureClient(self):
+  def ConfigureClient(self):    
     LOG(INFO, 'ConfigureClient')
+    unmount_nfs_cmd = 'sudo umount -l /mapr'
+    LOG(INFO, 'unmounting nfs')
+    util.ExecuteCmd(unmount_nfs_cmd)
     # try to start the nfs server and make sure it starts OK... 
     # if it doesn't ask the user to apply license and retry until success
     LOG(INFO, 'Enabling NFS server...')    
@@ -385,17 +338,20 @@ class MaprCluster(object):
         break
     # tell local client to point at the master
     master_instance = self.__GetMasterInstance() 
-    assert(master_instance)
+    CHECK(master_instance)
     # TODO(kheath): allow the cluster name to be configure instead of hardwired MyCluster
-    print 'configuring client: %s ' % master_instance.private_ip
-    cmd = 'sudo rm -rf /opt/mapr/conf/mapr-clusters.conf; sudo /opt/mapr/server/configure.sh -N MyCluster -c -C %s:7222' % master_instance.private_ip
-    print util.ExecuteCmd(cmd)
-    unmount_nfs_cmd = 'sudo umount -l /mapr'
-    mount_nfs_cmd = 'sudo mkdir /mapr; sudo chmod 777 /mapr; sudo mount %s:/mapr /mapr;' % (master_instance.public_hostname)
-    perm_nfs_cmd = 'sudo chmod -R 777 /mapr/my.cluster.com/'
-    # mount nfs locally
-    LOG(INFO, 'unmounting nfs')
-    util.ExecuteCmd(unmount_nfs_cmd)
+    configure_mapr_client_cmd = 'sudo rm -rf /opt/mapr/conf/mapr-clusters.conf; sudo /opt/mapr/server/configure.sh -N %s -c -C %s:7222' % (self.config.cluster_name, master_instance.private_ip)
+    util.ExecuteCmd(configure_mapr_client_cmd)
+    
+    # if needed, create /mapr as root of all nfs mount points
+    if not os.path.exists('/mapr'):
+      util.ExecuteCmd('sudo mkdir /mapr')
+      util.ExecuteCmd('sudo chmod 777 /mapr')
+    
+    #mount_nfs_cmd = 'sudo mount -o nolock %s:/mapr/%s /mapr' % (master_instance.private_ip, self.config.cluster_name)
+    mount_nfs_cmd = 'sudo mount -o nolock %s:/mapr /mapr' % (master_instance.private_ip)
+    perm_nfs_cmd = 'sudo chmod -R 777 /mapr/%s' % (self.config.cluster_name)
+    
     LOG(INFO, 'mounting nfs')
     util.ExecuteCmd(mount_nfs_cmd)
     LOG(INFO, 'setting nfs permissions')
@@ -408,11 +364,10 @@ class MaprCluster(object):
     CHECK(master_instance.private_ip in ip_to_id)
     master_id = ip_to_id[master_instance.private_ip]
     # move master node topology to /cldb 
-    assert(master_instance)
+    CHECK(master_instance)
     retval, response = self.__RunMaprCli('node move -serverids %s -topology /cldbonly' % master_id)
     # create data volume    
     retval, response = self.__RunMaprCli('volume create -name data -path /data -type 0 -mount 1')
-    print retval, response
     return
 
   def __ConfigureMaster(self):
@@ -420,22 +375,46 @@ class MaprCluster(object):
     CHECK(master_instance)
     self.__WaitForInstancesReachable([master_instance])
     self.__SetupAccessControl()
+    
+    root_password_hash = sha256_crypt.encrypt("mapr")
     extra_vars = {'cluster_name': self.config.cluster_name,
-                  'master_ip': master_instance.private_ip}
+                  'master_ip': master_instance.private_ip,
+                  'root_password_hash': root_password_hash,
+                  'is_master' : True}
     CHECK(util.RunPlaybookOnHost(self.playbooks_path + '/master.yml', master_instance.private_ip, self.ssh_key, extra_vars))    
     self.__WaitForMasterReady()    
     self.__SetupMasterTopology()
     # instruct the user to log in to web ui and install license and start nfs service
     web_ui_url = self.__GetWebUiUrl()
-    print 'log in to web ui and install license and start nfs service'
-    print 'url: %s' % (web_ui_url)
-    raw_input() # wait for manual steps before continuing
+    print ''
+    print ''
+    print ''
+    print ''
+    print 'Your master node is ready...'
+    print ''
+    print ''
+    print ''
+    print ''
+    print '*********************** Please Install Free License ***********************'    
+    print '1. Log in to MapR Web UI...'
+    print '   url: %s' % (web_ui_url)
+    print '   username: root'
+    print '   password: mapr'
+    print '   NOTE: You can safely ignore any web browser SSL error warnings.'
+    print ' '        
+    print '2. Click "Add License via Web" button and follow on-screen'
+    print '   instructions to add a free M3 license.'
+    print ' '    
+    print '3. Return to this console and press any key to continue...'
+    print ''  
+    raw_input('After installing M3 license..\n PRESS ANY KEY to launch worker nodes.') # wait for manual steps before continuing
+      
+    
     # TODO: for automating cluster reg, the web ui submits this POST command
     #http://www.mapr.com/index.php?option=com_comprofiler&task=savecluster&Itemid=0&clusterId=3858970976225177413&clusterName=my.cluster.com
     # next need to call REST method to auto-add licences from web
     return
   
-
   def __GetWebUiUrl(self):
     master_instance = self.__GetMasterInstance()
     web_ui_url = 'https://%s:8443' % (master_instance.public_hostname)
@@ -461,8 +440,7 @@ class MaprCluster(object):
       ready = True
     except:
       print '.'
-      #LOG(INFO, 'error checking if url is live: %s' % (url))
-      
+      #LOG(INFO, 'error checking if url is live: %s' % (url))      
     return ready 
 
   def __WaitForUrlReady(self, url):
@@ -479,20 +457,19 @@ class MaprCluster(object):
     web_ui_ready = self.__IsWebUiReady()
     count = 0
     while True:
-      time.sleep(10)
       if self.__IsWebUiReady():
         break
-      
       count += 1
       if count > 12:
         count = 0
-        # this is a hack... sometimes the start node script fails to get the cldb and the web service running... This pokes it if it is not responding..
-        self.__RunCommandOnInstances('sudo service mapr-warden restart', [master_instance])
-        time.sleep(30)        
-        self.__RunCommandOnInstances('sudo /opt/mapr/adminuiapp/webserver start ', [master_instance])
-        time.sleep(30)                              
+        LOG(FATAL, 'web service probably did not start... you need to enable the hack.')
+#         # this is a hack... sometimes the start node script fails to get the cldb and the web service running... This pokes it if it is not responding..
+#         self.__RunCommandOnInstances('sudo service mapr-warden restart', [master_instance])
+#         time.sleep(30)        
+#         self.__RunCommandOnInstances('sudo /opt/mapr/adminuiapp/webserver start ', [master_instance])
+#         time.sleep(30)
+      time.sleep(1)                                      
     return
-
 
   def __SetupAccessControl(self):
     # modify security group to allow this machine (i.e. those in workstation group) to ssh to cluster nodes    
@@ -501,7 +478,6 @@ class MaprCluster(object):
     cluster_security_group.revoke(src_group=client_security_group) # be sure this group not yet authorized, or next command fails
     cluster_security_group.authorize(src_group=client_security_group)
     return
-
 
   def __AddWorkers(self, num_to_add):
     """ Adds workers evenly across all enabled zones."""                
@@ -529,63 +505,16 @@ class MaprCluster(object):
     self.__ConfigureWorkers(new_worker_instances)
     return
   
-#   def __EnableRootUser(self, instances):  
-#     # for ubuntu, need to enable root account by setting a password
-#     ubuntu_enable_root_cmd = 'echo "root:mapr" | sudo chpasswd'
-#     results = self.__RunCommandOnInstances(ubuntu_enable_root_cmd, instances)
-#     # generate ssh key for root user
-#     self.__RunCommandOnInstances("sudo rm -rf /root/.ssh/; sudo ssh-keygen -t rsa -N '' -f /root/.ssh/id_rsa; sudo touch /root/.ssh/authorized_keys", instances)    
-#     return
-  
 #  def __TerminateUnreachableInstances(self, instances):
 #    unreachable_instances = util.GetUnreachableInstances(instances, self.ssh_key)
 #    print 'unreachable_instances: %s' % (unreachable_instances)
 #    self.cluster.ec2.terminate_instances(instances)
 #    return
-    
-    
-  def __ConfigurePasswordlessSS_HOLD(self, instances):
-    # Setup passwordless SSH    
-    # get copy of master root public key
-    master_instance = self.__GetMasterInstance()    
-    cmd = util.MakeRemoteExecuteCmd('sudo cat /root/.ssh/id_rsa.pub' , master_instance.public_hostname, self.ssh_key)
-    pub_key = None
-    #retval = None
-    
-    while pub_key == None:
-      try:
-        _, pub_key = util.CheckOutput(cmd, shell=True) # work around because above        
-      except subprocess.CalledProcessError as e:
-        print 'Can not get public key from master instance... Will try again... %s' % (master_instance.private_ip)
-        time.sleep(2)
-    
-    pub_key = pub_key.strip()
-    
-    print pub_key
-    assert(pub_key)
-    
-    append_auth_cmd = """sudo sh -c 'echo %s >> /root/.ssh/authorized_keys'""" % (pub_key)
-    self.__RunCommandOnInstances(append_auth_cmd, instances)    
-    return  
-    
-  
-#   def __ConfigurePasswordlessSSH(self, instances):
-#     # Setup passwordless SSH    
-#     # get copy of master root public key
-#     master_instance = self.__GetMasterInstance()    
-#     pub_key = util.ReadRemoteFile('/root/.ssh/id_rsa.pub', master_instance.public_hostname, self.ssh_key)
-#     pub_key = pub_key.strip()
-#     print pub_key
-#     CHECK(pub_key)
-#     append_auth_cmd = """sudo sh -c 'echo %s >> /root/.ssh/authorized_keys'""" % (pub_key)
-#     self.__RunCommandOnInstances(append_auth_cmd, instances)    
-#     return
   
   def __GetIpsFromCldb(self):
     """ Gets ip of workers that are live in cldb """    
     ip_to_id = self.__IpsToServerIds()
     return ip_to_id.keys()
-    
     
   def __GetMissingWorkers(self):
     cldb_ip_set = set(self.__GetIpsFromCldb())
@@ -595,16 +524,11 @@ class MaprCluster(object):
       if instance.private_ip not in cldb_ip_set:
         LOG(INFO, 'we have a worker that is running but not in cldb: %s' % (instance))
         missing_workers.append(instance)
-      
     return missing_workers  
-  
-  
-  
   
   def __GetZoneForWorker(self, worker_ip):
     cldb_ip_set = set(self.__GetIpsFromCldb())
     raw_instances = self.cluster._get_instances(self.cluster._group_name_for_role('spotworker'), 'running')
-    
     # group workers by zone
     workers_zone = None
     for raw_instance in raw_instances:
@@ -615,33 +539,25 @@ class MaprCluster(object):
         break     
     return workers_zone
   
-  
   def __GetZoneToWorkerIpsTable(self):
-    
     cldb_ip_set = set(self.__GetIpsFromCldb())
-    
     raw_instances = self.cluster._get_instances(self.cluster._group_name_for_role('spotworker'), 'running')
     zone_to_ip = {}
-    
     for i, zone in enumerate(self.config.zones):
       zone_name = self._GetAvailabilityZoneNameByIndex(i)
       zone_to_ip[zone_name] = []
-    
     # group workers by zone
     for raw_instance in raw_instances:
       zone_name = raw_instance.placement
       ip = raw_instance.private_ip_address
-      
       if ip not in cldb_ip_set:
         LOG(INFO, 'we have a worker that is running but not in cldb: %s' % (ip))
         continue
-      
       if zone_name not in zone_to_ip:
         LOG(FATAL, 'unexpected condition')
         #zone_to_ip[zone] = []
       zone_to_ip[zone_name].append(ip)
     return zone_to_ip  
-  
   
   def __GetWorkNodeTopology(self):
     params = {'columns' : 'racktopo' }
@@ -665,7 +581,6 @@ class MaprCluster(object):
           workers_outside_racks.append(ip)
     return rack_to_nodes, workers_outside_racks
   
-
   def __ParseRackTopology(self, input_topology):
     rack_topology_parse_re = re.compile(r"^/data/(us-.*)/rack([0-9]{3})$")
     match = rack_topology_parse_re.match(input_topology)
@@ -675,7 +590,6 @@ class MaprCluster(object):
       rack_zone = match.groups()[0]
       rack_id = int(match.groups()[1])      
     return rack_zone, rack_id
-  
   
   def __ChangeNodeToplogy(self, server_id, new_topology):
     topology = '/data/'
@@ -695,13 +609,11 @@ class MaprCluster(object):
     if result['status'] != 'OK':
       LOG(INFO, 'error')
       return False
-    
     rack_zone, rack_id = self.__ParseRackTopology(new_rack_toplogy)
     CHECK(rack_zone != None)
     volume_name = 'data_deluge_cache_%s_rack%03d' % (rack_zone, rack_id)
     mount_path_parent = '/data/deluge/cache/%s' % (rack_zone)
     mount_path = '%s/rack%03d' % (mount_path_parent, rack_id)
-    
     #print volume_name
     #print mount_path
     parent_uri = str('maprfs://' + mount_path_parent).encode('ascii','ignore')
@@ -711,10 +623,8 @@ class MaprCluster(object):
      if not py_pert.MakeDirectory(parent_uri):
        LOG(INFO, 'failed to create dir: %s' % (parent_uri))
        return False
-     
     CHECK(py_pert.Exists(parent_uri)) 
     LOG(INFO, 'Deluge cache dir OK: %s' % (parent_uri))
-    
     # create the new cache volume
     params = {'name' : volume_name,              
               'type' : 0,
@@ -726,15 +636,13 @@ class MaprCluster(object):
     LOG(INFO, 'about to create volume: %s' % (params))
     result = self.__MaprApi('volume/create', params)
     CHECK_EQ(result['status'], 'OK', result)
-    
     LOG(INFO, 'about to configure client')    
     self.ConfigureClient() # nfs must be active before next commands can work 
-    time.sleep(30)
+    time.sleep(10)
     # set permisions
     LOG(INFO, 'about to fix cache permissions...')
-    perm_nfs_cmd = 'sudo chmod -R 777 /mapr/my.cluster.com/%s' % (mount_path)
+    perm_nfs_cmd = 'sudo chmod -R 777 /mapr/%s/%s' % (self.config.cluster_name, mount_path)
     util.ExecuteCmd(perm_nfs_cmd)  
-      
     # reset to the default topology /inactive
     params = {'values' : '{"cldb.default.volume.topology":"/inactive"}' }
     result = self.__MaprApi('config/save', params)
@@ -743,23 +651,18 @@ class MaprCluster(object):
       return False    
     return True
     
-    
   def __SetWorkerTopology(self):
     ip_to_id = self.__IpsToServerIds()
-    
     # get current state of the cluster topology
     rack_to_nodes, workers_outside_racks = self.__GetWorkNodeTopology()
-    
     # verify all current racks have at most 6 nodes
     for rack, rack_nodes in rack_to_nodes.iteritems():
       CHECK_LE(len(rack_nodes), 6)
-    
     # check if there are any workers that need to be placed into a rack
     new_racks = []
     for worker_ip in workers_outside_racks:    
       LOG(INFO, 'trying to place worker in a rack: %s' % worker_ip)  
       worker_zone = self.__GetZoneForWorker(worker_ip)
-      
       # check if there are any racks in that zone that have fewer than 6 nodes
       available_rack = None
       for rack, rack_nodes in rack_to_nodes.iteritems():
@@ -770,7 +673,6 @@ class MaprCluster(object):
         if rack_zone == worker_zone and len(rack_nodes) < 6:
           available_rack = rack
           break
-      
       # if not, we need to create a new rack         
       if available_rack == None:        
         max_rack_id_in_workers_zone = 0                
@@ -782,42 +684,23 @@ class MaprCluster(object):
         new_rack_topology = '/data/%s/rack%03d' % (worker_zone, new_rack_id)
         new_racks.append(new_rack_topology)
         available_rack = new_rack_topology
-        
       CHECK(available_rack) 
-      
       server_id = ip_to_id[worker_ip]
       self.__ChangeNodeToplogy(server_id, available_rack)
-      
       # update current state of the cluster topology
       rack_to_nodes, _ = self.__GetWorkNodeTopology()
-    
-    
     # get final state of the cluster topology
     rack_to_nodes, workers_outside_racks = self.__GetWorkNodeTopology()    
     #print rack_to_nodes
     #print workers_outside_racks
-    
     # verify all workers have been placed in a rack
     CHECK_EQ(len(workers_outside_racks), 0)
-    
     # create deluge cache volumes for any newly create racks
     time.sleep(60) # this seems to fail... try waiting to see if there may be a race condition causing segfault in maprfs    
     for new_rack in new_racks:
       self.__CreateCacheVolume(new_rack)
-        
-      
     return
   
-#   def __ConfigureWorkersOLD(self, worker_instances):
-#     if not worker_instances:
-#       return
-#     master_instance = self.__GetMasterInstance()    
-#     self.__ConfigurePasswordlessSSH(worker_instances)    
-#     self.__RunScriptOnInstances(self.start_node_script, '-n %s -z %s' % (master_instance.private_ip, master_instance.private_ip), worker_instances)
-#     self.__ReconfigureTaskTrackers(worker_instances)
-#     self.__SetWorkerTopology()
-#     return 
-
   def __ConfigureWorkers(self, worker_instances):
     if not worker_instances:
       return
@@ -825,15 +708,15 @@ class MaprCluster(object):
     master_pub_key = util.ReadRemoteFile('/root/.ssh/id_rsa.pub', master_instance.public_hostname, self.ssh_key)
     master_pub_key = master_pub_key.strip() # ensure newline is removed... otherwise there is an error!
     hostnames = self.__InstancesToHostnames(worker_instances)
-    master_instance = self.__GetMasterInstance()
     extra_vars = {'cluster_name': self.config.cluster_name,
                   'master_ip': master_instance.private_ip,
                   'master_pub_key': master_pub_key}
     CHECK(util.RunPlaybookOnHosts(self.playbooks_path + '/worker.yml', hostnames, self.ssh_key, extra_vars))
     num_cores = self.GetNumCoresPerWorker()
     num_map_slots = num_cores
-    num_red_slots = num_cores - 1 
-    self.__ReconfigureTaskTrackers(worker_instances, num_map_slots, num_red_slots)    
+    num_reduce_slots = num_cores - 1 
+    CHECK(self.__ConfigureMapredSite(worker_instances, num_map_slots, num_reduce_slots))
+    CHECK(self.__RestartTaskTrackers(worker_instances))
     self.__SetWorkerTopology()
     return 
 
@@ -855,8 +738,7 @@ class MaprCluster(object):
     if r.status_code == 404:
       LOG(FATAL, '\ninvalid api call: %s.\nReview docs here for help: http://mapr.com/doc/display/MapR/API+Reference' % (r.url))      
     return r.json()
-    
-  
+      
   def __RunMaprCli(self, cmd_str):
     cmd = 'sudo maprcli %s' % (cmd_str)
     results = self.__RunCommandOnInstances(cmd, [self.__GetMasterInstance()])
@@ -867,35 +749,34 @@ class MaprCluster(object):
     node_list = ','.join([i.private_ip for i in instances])
     print node_list
     params = {'nodes': node_list, 'tasktracker' : 'restart'}
-    print params
-    r = self.__MaprApi('node/services', params)
-    CHECK_EQ(r['status'], 'OK', r)
-    return True
-
-
-#  def __RestartTaskTrackers(self, instances):        
-#    node_list = ''    
-#    for instance in instances:        
-#      node_list += ' %s' % (instance.private_hostname)
-#    
-#    cmd = 'node services -nodes %s -tasktracker restart' % (node_list)      
-#    retval, response = self.__RunMaprCli(cmd)    
-#    return (retval == 0)
+    r = self.__MaprApi('node/services', params)    
+    success = True
+    if r['status'] != 'OK':
+      LOG(INFO, r)
+      success = False
+    return success
   
+#   def __RestartJobTracker(self):      
+#     # restart job tracker
+#     master_instance = self.__GetMasterInstance()
+#     cmd = 'node services -nodes %s -jobtracker restart' % (master_instance.private_hostname)      
+#     retval, response = self.__RunMaprCli(cmd)
+#     return (retval == 0)
   
-  def __RestartJobTracker(self):      
-    # restart job tracker
-    master_instance = self.__GetMasterInstance()
-    cmd = 'node services -nodes %s -jobtracker restart' % (master_instance.private_hostname)      
-    retval, response = self.__RunMaprCli(cmd)
-    return (retval == 0)
-  
+  def __RestartJobTracker(self):    
+    master_instance = self.__GetMasterInstance()  
+    params = {'nodes': [master_instance.private_hostname], 'jobtracker' : 'restart'}
+    r = self.__MaprApi('node/services', params)    
+    success = True
+    if r['status'] != 'OK':
+      LOG(INFO, r)
+      success = False
+    return success  
   
   def __InstancesToHostnames(self, instances):
     #hostnames = [instance.public_hostname for instance in instances]    
     hostnames = [instance.private_ip for instance in instances]
     return hostnames
-  
   
   def __WaitForInstancesReachable(self, instances):
     CHECK(instances)        
@@ -912,73 +793,74 @@ class MaprCluster(object):
                           self.__InstancesToHostnames(instances), 
                           self.ssh_key)
     
-  
-  
-#   def __RunScriptOnInstances(self, script, script_args, instances):    
-#     return util.RunScriptOnHosts(script, script_args, 
-#                           self.__InstancesToHostnames(instances), 
-#                           self.ssh_key)
-#     
-#   
-#   def __RunScriptOnInstance(self, script, script_args, instance):   
-#     return util.RunScriptOnHost(script, script_args, 
-#                           instance.public_hostname, 
-#                           self.ssh_key)
-#     
-#   
-#   def __CopyToInstances(self, src_path, dst_path, instances):
-#     return util.CopyToHosts(src_path, dst_path, 
-#                             self.__InstancesToHostnames(instances), 
-#                             self.ssh_key)
-  
- 
+  def __LaunchOnDemandMasterInstances(self):        
+      # Compute a good bid price based on recent price history
+      prefered_master_zone = self._GetAvailabilityZoneNameByIndex(0)
+      role = 'master'
+      ami = util.LookupCirrusAmi(self.ec2, 
+                                 self.config.cluster_instance_type, 
+                                 self.config.ubuntu_release_name, 
+                                 self.config.mapr_version, 
+                                 role,
+                                 self.config.mapr_ami_owner_id)
+      CHECK(ami)    
+      number_zone_list = [(1, prefered_master_zone)] 
+      new_instances = self.cluster.launch_and_wait_for_demand_instances(
+                                               role='master',
+                                               image_id=ami.id,
+                                               instance_type=self.config.cluster_instance_type,
+                                               private_key_name=self.cluster_keypair_name,
+                                               number_zone_list=number_zone_list)
+      CHECK(new_instances)
+      return new_instances
       
+        
   def __LaunchSpotMasterInstances(self):        
-    # Compute a good bid price based on recent price history
-    prefered_master_zone = self._GetAvailabilityZoneNameByIndex(0)
-    num_days = 1
-    cur_price = self.cluster.get_current_spot_instance_price(self.config.cluster_instance_type, prefered_master_zone)    
-    recent_max_price = self.cluster.get_recent_max_spot_instance_price(self.config.cluster_instance_type, prefered_master_zone, num_days)    
-    high_availability_bid_price = recent_max_price + 0.10     
-    print 'current price: %f' % (cur_price)
-    print 'high_availability_bid_price: %f' % (high_availability_bid_price)
-    CHECK_LT(cur_price, 0.35) # sanity check so we don't do something stupid
-    CHECK_LT(high_availability_bid_price, 1.25) # sanity check so we don't do something stupid
-    # get the ami preconfigured as a master mapr node
-    role = 'master'
-    ami = util.LookupCirrusAmi(self.ec2, 
-                               self.config.cluster_instance_type, 
-                               self.config.ubuntu_release_name, 
-                               self.config.mapr_version, 
-                               role,
-                               self.config.mapr_ami_owner_id)
-    CHECK(ami)    
-    number_zone_list = [(1, prefered_master_zone)] 
-    ids = self.cluster.launch_and_wait_for_spot_instances(price=high_availability_bid_price,
-                                             role='master',                                             
-                                             image_id=ami.id,
-                                             instance_type=self.config.cluster_instance_type,
-                                             private_key_name=self.cluster_keypair_name,
-                                             number_zone_list=number_zone_list)
-    return ids
-
+      # Compute a good bid price based on recent price history
+      prefered_master_zone = self._GetAvailabilityZoneNameByIndex(0)
+      num_days = 1
+      cur_price = self.cluster.get_current_spot_instance_price(self.config.cluster_instance_type, prefered_master_zone)    
+      recent_max_price = self.cluster.get_recent_max_spot_instance_price(self.config.cluster_instance_type, prefered_master_zone, num_days)    
+      high_availability_bid_price = recent_max_price + 0.10     
+      print 'current price: %f' % (cur_price)
+      print 'high_availability_bid_price: %f' % (high_availability_bid_price)
+      CHECK_LT(cur_price, 0.35) # sanity check so we don't do something stupid
+      CHECK_LT(high_availability_bid_price, 1.25) # sanity check so we don't do something stupid
+      # get the ami preconfigured as a master mapr node
+      role = 'master'
+      ami = util.LookupCirrusAmi(self.ec2, 
+                                 self.config.cluster_instance_type, 
+                                 self.config.ubuntu_release_name, 
+                                 self.config.mapr_version, 
+                                 role,
+                                 self.config.mapr_ami_owner_id)
+      CHECK(ami)    
+      number_zone_list = [(1, prefered_master_zone)] 
+      ids = self.cluster.launch_and_wait_for_spot_instances(price=high_availability_bid_price,
+                                               role='master',                                             
+                                               image_id=ami.id,
+                                               instance_type=self.config.cluster_instance_type,
+                                               private_key_name=self.cluster_keypair_name,
+                                               number_zone_list=number_zone_list)
+      return ids
+  
   def __LaunchOnDemandWorkerInstances(self, number_zone_list): 
-    role = 'worker'
-    ami = util.LookupCirrusAmi(self.ec2, 
-                               self.config.cluster_instance_type, 
-                               self.config.ubuntu_release_name, 
-                               self.config.mapr_version, 
-                               role,
-                               self.config.mapr_ami_owner_id)
-    CHECK(ami)
-    new_instances = self.cluster.launch_and_wait_for_demand_instances(
-                                             role='spotworker',
-                                             image_id=ami.id,
-                                             instance_type=self.config.cluster_instance_type,
-                                             private_key_name=self.cluster_keypair_name,
-                                             number_zone_list=number_zone_list)
-    CHECK(new_instances)
-    return new_instances
+      role = 'worker'
+      ami = util.LookupCirrusAmi(self.ec2, 
+                                 self.config.cluster_instance_type, 
+                                 self.config.ubuntu_release_name, 
+                                 self.config.mapr_version, 
+                                 role,
+                                 self.config.mapr_ami_owner_id)
+      CHECK(ami)
+      new_instances = self.cluster.launch_and_wait_for_demand_instances(
+                                               role='spotworker',
+                                               image_id=ami.id,
+                                               instance_type=self.config.cluster_instance_type,
+                                               private_key_name=self.cluster_keypair_name,
+                                               number_zone_list=number_zone_list)
+      CHECK(new_instances)
+      return new_instances
 
   def __LaunchSpotWorkerInstances(self, number_zone_list): 
     max_zone_price = 0
@@ -1047,7 +929,7 @@ class MaprCluster(object):
     mapr_cache_path = '/opt/mapr/logs/cache'
     cmd = "sudo mkdir -p %s; sudo chmod -R 755 %s; sudo mkdir %s/hadoop/; sudo mkdir %s/tmp; sudo chmod -R 1777 %s/tmp" % (mapr_cache_path, mapr_cache_path, mapr_cache_path, mapr_cache_path, mapr_cache_path)
     self.__RunCommandOnInstances(cmd, instances)
-    return  
+    return
     
   def __CleanUpCoresAlarm(self):
     """ Mapr signals an alarm in the web ui when there are files in a nodes /opt/cores dir.  This is anoying because we can't see if there is a real problem with the node because of this pointless error message.  This removes those files so the alarm goes away."""

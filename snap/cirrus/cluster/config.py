@@ -6,7 +6,6 @@ class CirrusConfig(object):
   """  
   def __init__(self):
     super(CirrusConfig, self).__init__()
-    self.cluster_name = 'cirrus_cluster_01'
     self.region_name = 'us-east-1'
     self.prefered_availability_zone = self.region_name + 'b'
     self.ubuntu_release_name = 'precise'
@@ -18,7 +17,8 @@ class CirrusConfig(object):
     #self.cluster_instance_type = 'cc2.8xlarge'        
     #self.cluster_instance_type = 'cc1.4xlarge'
     self.mapr_version = 'v2.1.3'
-    self.zones = ['a'] # list like this ['a','c','e']
+    self.zones = ['b'] # list like this ['a','c','e']
+    self.cluster_name = 'iwct' # determines the nfs mount point on desktop /mapr/<cluster_name> and name of cluster set by mapr's configure.sh 
     return
   
 def GetConfiguration():

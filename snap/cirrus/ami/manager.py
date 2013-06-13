@@ -78,7 +78,9 @@ class AmiMaker(object):
     else: 
       LOG(FATAL, 'unknown role: %s' % (self.ami_spec.role))        
     
-    raw_input('Please login and perform any custom manipulations before snapshot is made!')
+    
+    if self.ami_spec.role == 'workstation':
+      raw_input('Please login and perform any custom manipulations before snapshot is made!')
     
     self.__SecurityScrub(template_instance)
     
@@ -130,7 +132,8 @@ class AmiMaker(object):
   def __ConfigureAsClusterMaster(self, instance):
     LOG(INFO, 'Configuring a cluster master...')    
     playbook = os.path.dirname(__file__) + '/templates/cluster/master.yml'
-    extra_vars = {'mapr_version' : self.ami_spec.mapr_version}
+    extra_vars = {'mapr_version' : self.ami_spec.mapr_version,
+                  'is_master' : True}
     CHECK(util.RunPlaybookOnHost(playbook, instance.dns_name, self.ssh_key, extra_vars = extra_vars))
     return
   

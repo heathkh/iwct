@@ -23,6 +23,7 @@
   pip: name=$item
   with_items:
      - requests
+     - passlib
 
 - name: Remove conflicting package versions that got auto-installed  
   apt: pkg=$item state=absent

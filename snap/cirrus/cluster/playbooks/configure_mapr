@@ -888,10 +888,11 @@ $ENV{"PATH"} = $path;
 #  z: zookeeper info
 
 my %options=();
-getopts("dn:s:u:z:", \%options);
+getopts("dn:s:u:z:c:", \%options);
 
 my $cldbInfo = $options{n};
 my $zkInfo = $options{z};
+my $clusterName = $options{c};
 my $unMountPaths = $options{u};
 my $skipDisks = $options{s};
 
@@ -988,20 +989,8 @@ if (defined $cldbInfo && defined $zkInfo) {
   printf "%s: CLDB Info: %s, ZK info: %s\n",
         scalar(localtime()), $cldbInfo, $zkInfo;
 
-  # uniquify the ami by generating new ids
-  $cmd = "rm -f /opt/mapr/hostid; rm -f /opt/mapr/hostname; /opt/mapr/server/mruuidgen > /opt/mapr/hostid;  cp /opt/mapr/hostid /opt/mapr/conf/hostid.$$; chmod 444 /opt/mapr/hostid; hostname -f > /opt/mapr/hostname";
-  printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
-  $ret = system ($cmd);
-
-  $ret = $ret >> 8;
-  if ( $ret != 0) {
-    printf "%s: [ERROR] $cmd failed: returned $ret\n",
-        scalar(localtime());
-  }
-  
-    
   # note, we expect that the user mapr has already been created
-  $cmd = "/bin/bash /opt/mapr/server/configure.sh -C $cldbInfo -Z $zkInfo -u root -g root --isvm";
+  $cmd = "/bin/bash /opt/mapr/server/configure.sh -C $cldbInfo -Z $zkInfo -N $clusterName -u root -g root --isvm";
   printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
   $ret = system ($cmd);
 
@@ -1071,19 +1060,6 @@ if ($tempClusterConf == 1) {
 }
 
 SetupAndStartNTP();
-
-# startup zookeeper (if zknode)
-if (-e "/etc/init.d/mapr-zookeeper") {
-  $cmd = "/bin/bash /etc/init.d/mapr-zookeeper restart";
-  printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
-  system ($cmd);
-}
-
-# startup warden
-$cmd = "/bin/bash /etc/init.d/mapr-warden restart";
-printf ("%s: [INFO] Running cmd: $cmd\n", scalar(localtime()));
-system ($cmd);
-
 
 printf ("%s: done executing %s\n", scalar(localtime()), $0);
 exit 0;

@@ -5,23 +5,16 @@
     - name: Generate key for root
       user: name=root generate_ssh_key=yes
       
-    - name: Set password for root user (needed for webui login)
-      command: echo "root:mapr" | sudo chpasswd
+    - name: Set password for root user (needed for MapR Web UI login)
+      user: name=root password=$root_password_hash
   
-    - name: Start MapR services
-      script: start_node -n $master_ip -z $master_ip
-      
-    - name: restart cldb
-      service: name=mapr-cldb state=restarted pattern=cldb
-      
-    - name: Restart warden
-      service: name=mapr-warden state=restarted pattern=warden
-      
+    - include: configure_mapr.yml
+        
     - name: Wait for MapR CLDB to be available
-      wait_for: port=7222 delay=5  
+      wait_for: port=7222 delay=5 timeout=600 # wait up to 10 minutes
     
     - name: Wait for MapR web UI to be available
-      wait_for: port=8443 delay=5
+      wait_for: port=8443 delay=5 timeout=600 # wait up to 10 minutes
     
     # These hacks needed because I can't get the darn quotation escaping right to call them remotely
     # Must be done after CLDB is up (blocking for web ui is a nice way to wait for this)      
@@ -50,8 +43,5 @@
     - name: Restart apache
       service: name=apache2 state=restarted  
      
-    # for some reason this needs to be done again before login will work... already done in common.yml  
-    - name: Set password for root user (needed for webui login)
-      command: echo "root:mapr" | sudo chpasswd  
       
     

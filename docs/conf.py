@@ -12,13 +12,18 @@
 # serve to show the default.
 
 import sys, os
-import sphinx_bootstrap_theme
+
+has_bootstrap_theme = False
+try:
+  import sphinx_bootstrap_theme
+  has_bootstrap_theme = True
+except:
+  pass
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #sys.path.insert(0, os.path.abspath('.'))
-
 # -- General configuration -----------------------------------------------------
 
 # If your documentation needs a minimal Sphinx version, state it here.
@@ -96,8 +101,9 @@ pygments_style = 'sphinx'
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #html_theme = "nature"
-html_theme = 'bootstrap'
-html_theme_path = sphinx_bootstrap_theme.get_html_theme_path()
+if has_bootstrap_theme:
+  html_theme = 'bootstrap'
+  html_theme_path = sphinx_bootstrap_theme.get_html_theme_path()
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the

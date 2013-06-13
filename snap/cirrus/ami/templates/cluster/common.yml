@@ -14,9 +14,28 @@
 - name: Turn on pam limits so above changes take effect
   lineinfile: dest=/etc/pam.d/common-session regexp="^session required pam_limits.so" line="session required pam_limits.so"
 
+# Install monit
+- name: Install monit (used to keep MapR Warden running)
+  apt: pkg=monit
+
 # Install snappy
 - name: Install snappy
   apt: pkg=libsnappy1
   
 - name: Setup hadoop to find snappy
   file: src=/usr/lib/libsnappy.so.1 dest=/opt/mapr/hadoop/hadoop-0.20.2/lib/native/Linux-amd64-64/libsnappy.so state=link owner=root group=root
+  
+# Ensure AMI contains no mapr host id... need the configure_mapr script to create that unique for each node
+- name: Cleanup mapr host id residue
+  file: path=/opt/mapr/hostid state=absent  
+  
+- name: Cleanup mapr hostname residue
+  file: path=/opt/mapr/hostname state=absent
+  
+# Ensure mapr services DO NOT start automatically on boot (must wait until after configure_mapr has been run)
+- name: Ensure zookeeper doesn't start on boot
+  service: name=mapr-zookeeper enabled=no
+  when: set $is_master
+
+- name: Ensure Warden doesn't start on boot
+  service: name=mapr-warden enabled=no
