@@ -1,7 +1,6 @@
 from snap.pyglog import *
 from snap.cirrus import util
 from string import Template
-from snap.cirrus.ami import manager
 import time
 import hashlib
 from snap import boto
