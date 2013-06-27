@@ -5,7 +5,6 @@ import tornado.web
 from snap.pyglog import *
 from snap.google.base import py_base
 from iw import iw_pb2
-from iw import visutil
 import json
 import string
 from snap.deluge import provenance

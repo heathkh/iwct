@@ -256,14 +256,14 @@ class FlowScheduler(object):
         trace = traceback.format_exc()
         error_msg += 'Trace:\n'
         error_msg += trace
-        notification.SendNotification('FAIL - %s' % runable , error_msg)
+        #notification.SendNotification('FAIL - %s' % runable , error_msg)
         print ''
         print error_msg
         return False      
       title = 'FLOW DONE - %s' % runable
       #notification.SendNotification(title, 'flow done')
       self.cur_step += 1
-    notification.SendNotification('ALL DONE' , 'all flows completed')    
+    #notification.SendNotification('ALL DONE' , 'all flows completed')    
     return True
   
   
@@ -338,7 +338,7 @@ class FlowScheduler(object):
       print cur_running_flows
       time.sleep(5)
 
-    notification.SendNotification('ALL DONE' , 'all flows completed')
+    #notification.SendNotification('ALL DONE' , 'all flows completed')
     
     return
     

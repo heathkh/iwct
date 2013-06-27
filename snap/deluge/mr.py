@@ -12,8 +12,8 @@ from iw import util as iwutil
 from snap.deluge import deluge_pb2
 import base64
 
-build_dir = __file__ + '/../../build'
-nfs_base = '/mapr/my.cluster.com'
+# TODO(heathkh): remove the need for nfs_base
+nfs_base = '/mapr/iwct/'
 
 
 def Base64EncodeProto(msg):
@@ -42,8 +42,7 @@ def RunAndGetOutput(*popenargs, **kwargs):
 
 def GetClusterProperty(property):
   """ Queries the MAPR cluster for property value. """
-  # TODO(kheath): rewrite this to not depend on relative path to cirrus
-  cmd = os.path.dirname(__file__) + '/../cirrus/cluster_cli.py get_property %s' % (property)  
+  cmd = 'cirrus_cluster_cli get_property %s' % (property)
   output = RunAndGetOutput(cmd, shell=True)
   dict_result = ast.literal_eval(output)
   return dict_result
@@ -139,7 +138,7 @@ def SetNumSlotsPerNode(num_map_slots_per_node, num_reduce_slots_per_node):
   # TODO(kheath): rewrite this to not depend on relative path to cirrus
   num_map_slots_str = str(int(num_map_slots_per_node))
   num_reduce_slots_str = str(int(num_reduce_slots_per_node))  
-  cmd = os.path.dirname(__file__) + '/../cirrus/cluster_cli.py set_map_reduce_slots_per_node %s %s' % (num_map_slots_str, num_reduce_slots_str)
+  cmd = 'cirrus_cluster_cli set_map_reduce_slots_per_node %s %s' % (num_map_slots_str, num_reduce_slots_str)
   RunAndGetOutput(cmd, shell=True)
   
   # wait for change to take affect
@@ -166,46 +165,66 @@ def UriToNfsPath(uri):
     nfs_path = '%s/%s' % (nfs_base, path)  
   else:
     LOG(FATAL, 'unexpected scheme: %s' % scheme)
-    
+     
   return nfs_path
 
+
+# def CopyUri(src_uri, dst_uri):
+#   """ Makes a copy of src_uri available at the given dst_uri.
+#   If src is a file, dst will be a file.
+#   If src is a dir, dst will be a dir.
+#   If dst already exists, it is overwritten.
+#   """
+#   src_path = UriToNfsPath(src_uri)
+#   dst_path = UriToNfsPath(dst_uri)
+#   if not os.path.exists(src_path):
+#     LOG(FATAL, 'src uri does not exist: %s' % src_uri)
+#   # To support overwrite, delete dst path recusively to be sure it doesn't exist
+#   if os.path.exists(dst_path):
+#     shutil.rmtree(dst_path, ignore_errors=True)
+#   # create directory structure to parent of dst_uri if it doesn't exist  
+#   try:
+#     os.makedirs(os.path.dirname(dst_path))
+#   except:
+#     pass
+#   # if src is a file
+#   if os.path.isfile(src_path):
+#     shutil.copyfile(src_path, dst_path)
+#     shutil.copystat(src_path, dst_path) # transfer modified time
+#   # if src is a directory
+#   elif os.path.isdir(src_path):
+#     # copy directory recusively 
+#     shutil.copytree(src_path, dst_path)    
+#   else:
+#     LOG(FATAL, 'unexpected condition') 
+#   return
 
 def CopyUri(src_uri, dst_uri):
   """ Makes a copy of src_uri available at the given dst_uri.
   If src is a file, dst will be a file.
   If src is a dir, dst will be a dir.
   If dst already exists, it is overwritten.
-  """
-  src_path = UriToNfsPath(src_uri)
-  dst_path = UriToNfsPath(dst_uri)
-  if not os.path.exists(src_path):
-    LOG(FATAL, 'src uri does not exist: %s' % src_uri)
-  # To support overwrite, delete dst path recusively to be sure it doesn't exist
-  if os.path.exists(dst_path):
-    shutil.rmtree(dst_path, ignore_errors=True)
-  # create directory structure to parent of dst_uri if it doesn't exist  
-  try:
-    os.makedirs(os.path.dirname(dst_path))
-  except:
-    pass
-  # if src is a file
-  if os.path.isfile(src_path):
-    shutil.copyfile(src_path, dst_path)
-    shutil.copystat(src_path, dst_path) # transfer modified time
-  # if src is a directory
-  elif os.path.isdir(src_path):
-    # copy directory recusively 
-    shutil.copytree(src_path, dst_path)    
-  else:
-    LOG(FATAL, 'unexpected condition') 
-  return 
+  """  
+  py_pert.CopyUri(src_uri, dst_uri)
+  return   
  
 
-def CalculatePertFileSize(root):
-  names = sorted(os.listdir(root))
-  paths = [os.path.realpath(os.path.join(root, n)) for n in names]
-  # handles dangling symlinks
-  total = sum(os.stat(p).st_size for p in paths if os.path.exists(p))
+# def CalculatePertFileSize(root):
+#   names = sorted(os.listdir(root))
+#   paths = [os.path.realpath(os.path.join(root, n)) for n in names]
+#   # handles dangling symlinks
+#   total = sum(os.stat(p).st_size for p in paths if os.path.exists(p))
+#   return total
+
+def CalculatePertFileSize(pert_uri):
+  shard_uris = py_pert.GetShardUris(pert_uri)
+  total = 0
+  for shard_uri in shard_uris:
+    print shard_uri
+    ok, size = py_pert.FileSize(shard_uri)
+    print size
+    CHECK(ok)
+    total += size   
   return total
 
 
@@ -244,10 +263,9 @@ def GetUriSplitInfo(uri):
   
 def ComputeMaxNumSplits(input_uri):
   """ Calculate the number of splits that are possible for a given pert file."""
-  nfs_input_path = UriToNfsPath(input_uri)
-  total_size_bytes = CalculatePertFileSize(nfs_input_path)
+  total_size_bytes = CalculatePertFileSize(input_uri)
   num_shards = py_pert.GetNumShards(input_uri)
-  num_entries, max_block_size = GetUriSplitInfo("local:///"+nfs_input_path)
+  num_entries, max_block_size = GetUriSplitInfo(input_uri)
   min_split_size = max_block_size
   if min_split_size == 0:
     LOG(FATAL, 'The input is empty: %s' % input_uri)
@@ -257,6 +275,10 @@ def ComputeMaxNumSplits(input_uri):
     
   # if have more splits than this, then one of them will be too small
   max_num_splits = max(1, int(total_size_bytes / float(min_split_size) ))
+  
+  #print 'total_size_bytes: %d' % (total_size_bytes)
+  #print 'min_split_size: %d' % (min_split_size)
+  #print 'max_num_splits: %d' % (max_num_splits)
   
   # we can't have more splits than we have entries
   if num_entries < max_num_splits:

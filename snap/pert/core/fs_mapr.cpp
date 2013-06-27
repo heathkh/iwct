@@ -448,7 +448,7 @@ bool MaprFileSystem::FileSize(const std::string& uri, uint64* size){
   }
   hdfsFileInfo* info = hdfsGetPathInfo(fs, path.c_str());
   if (info){
-    *size = info->mBlockSize;
+    *size = info->mSize;
     hdfsFreeFileInfo(info,1);
   }
   else{

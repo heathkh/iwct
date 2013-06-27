@@ -44,6 +44,15 @@ public:
   }
 };
 
+
+class DropValueMapper : public HadoopPipes::Mapper {
+public:
+  DropValueMapper(HadoopPipes::TaskContext& context) {}
+  void map(HadoopPipes::MapContext& context) {
+    context.emit(context.getInputKey(), "");
+  }
+};
+
 //TODO(kheath): Can we use the -reduce org.apache.hadoop.mapred.lib.IdentityReducer
 // to accelerate this? or does this bypass our RecordWriter?
 class IdentityReducer : public HadoopPipes::Reducer {
