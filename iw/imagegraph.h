@@ -8,7 +8,7 @@ class ImageGraph;
 
 float NfaToWeight(float nfa);
 
-bool CreateImageGraph(const std::string& matches_uri, const std::string& tide_uri, iw::ImageGraph* ig);
+bool CreateImageGraph2(const std::string& matches_uri, const std::string& photoid_uri, iw::ImageGraph* ig);
 void SaveImageGraph(const iw::ImageGraph& ig, const std::string& output_uri);
 bool LoadImageGraph(const std::string& input_uri, iw::ImageGraph* ig);
 

@@ -1,6 +1,36 @@
+<head>
+<style>
+* {
+ font-family: sans-serif; 
+}
+div.thumbnail {
+    width:100px;
+    height:100px;
+    border:solid 1px gray;  
+    background: center center no-repeat;
+    background-size:auto 100%;    
+}
+
+.info {
+  color: gray;
+  font-size: 10px;
+  width: 100%;
+  display: inline-block;
+  text-align: center;
+  margin: 5px;
+}
+</style>
+</head>
 <html>
+<h1>Image Graph Points-of-Interest</h1>
+<p>Each image below represents the center of a cluster resulting from <a href="http://www.liafa.jussieu.fr/~pons/index.php?item=prog&item2=walktrap&lang=en"></a>walk-trap clustering on the image graph.  Click an image to explore the neighborhood of that image in the image-graph browser.</p>
+
 {% for info in cluster_info %}
-    {{info[0]}} <a href="imagegraph.html?initial_image={{info[1]}}"><img src="images/{{info[1]}}.jpg" style="max-width:100px"></a> <br>  
+    <!-- {{info[0]}} <a href="imagegraph.html?initial_image={{info[1]}}"><img src="images/{{info[1]}}.jpg" style="max-width:100px"></a> <br> -->
+   <div style="float: left; margin:10px; ">
+     <a href="imagegraph.html?initial_image={{info[1]}}"> <div class="thumbnail" style="background-image: url(images/{{info[1]}}.jpg);"></div>  </a>
+     <span class="info">Cluster size: {{info[0]}}</span>
+   </div>
 {% endfor %}
 </html> 
 

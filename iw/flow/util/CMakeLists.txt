@@ -97,6 +97,12 @@ CPP_BINARY (
   PACKAGES  //snap/deluge:deluge                                        
 )
 
+CPP_BINARY (
+  NAME      mr_drop_value
+  SOURCES   mr_drop_value.cpp  
+  PACKAGES  //snap/deluge:deluge                                        
+)
+
 CPP_BINARY(
   NAME      mr_create_bag_of_words  
   SOURCES   mr_create_bag_of_words.cpp  

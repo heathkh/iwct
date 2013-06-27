@@ -5,7 +5,7 @@ from deluge import mr
 from pyglog import *
 from pert import py_pert
 from iw import util as iwutil
-from iw.flow.util import motif
+#from iw.flow.util import motif
 from iw.flow.util import util
 from iw.flow.util import image_matcher_config
 from iw import iw_pb2
@@ -104,67 +104,67 @@ def GetPhaseBaseUri(base_uri, phase_index):
   return phase_base_uri
 
 
+def CheckInputPreconditions(input_images_uri):
+  reader = py_pert.StringTableReader()
+  CHECK(reader.Open(input_images_uri))
+  CHECK(reader.IsSorted(), 'input images must be sorted')
+  # TODO(heathkh): also need to check that there are no repeated keys... doing this locally is slow since we must read all the data
+  return
+
+
 class MainFlow(core.Flow):
   def __init__(self, root_uri, params):
     super(MainFlow,self).__init__()
     self.params = params
-    input_images = core.PertResource(self, '%s/photoid_to_image.pert' % (root_uri), check_exists=True, is_generated = False)    
-    tide = core.PertResource(self, '%s/objectid_to_object.pert' % (root_uri), check_exists=True, is_generated = False)    
-      
+    input_images = core.PertResource(self, '%s/photoid_to_image.pert' % (root_uri), check_exists=True, is_generated = False)
+    CheckInputPreconditions(input_images.GetUri())    
+    photoids_flow = util.PertDropValueFlow(input_images, '%s/photoid.pert' % root_uri)
+    self.photoids = photoids_flow.GetOutput()
     # extract features
     feature_uri_base = '%s/%s/' % (root_uri, iwutil.HashProto(self.params.tuned_feature_extractor_params))
-    
     feature_flow = util.ExtractFeaturesFlow(feature_uri_base, input_images, self.params.tuned_feature_extractor_params.params)
     features = feature_flow.GetOutput()
-    
     cbir_params = params.cbir
     cbir_uri_base = '%s/cbir/%s/' % (feature_uri_base, iwutil.HashProto(cbir_params))
-    
     cbir_flow = util.CbirMetaFlow(feature_uri_base, features, cbir_params)
     cbir_results = cbir_flow.cbir_results
-
     itergraph_uri_base = "%s/itergraph/%s/" % (cbir_uri_base, iwutil.HashProto(self.params))
-    build_graph_flow = BuildIterativeGraphFlow(itergraph_uri_base, 
-                                               features,
-                                               cbir_results,
-                                               self.params,
-                                               tide
-                                               )
-    
-    # eval image graph
-    #eval_flow = EvalImageGraphFlow(feature_uri_base, build_graph_flow.GetOutput('itergraph_state'), tide)
+    build_graph_flow = BuildIterativeGraphFlow(itergraph_uri_base,  features,
+                                               cbir_results, self.params)                                                                                                                                             
+    self.merged_matches = build_graph_flow.merged_matches
     return
 
 
-class CreateMotifExpansionMatchCandidatesMetaFlow(object):
-  def __init__(self, base_uri, phase_index, itergraph_params, tide, features, prev_phase_match_results):    
-    super(CreateMotifExpansionMatchCandidatesMetaFlow, self).__init__()
-    phase_params = itergraph_params.phase[phase_index]
-    phase_base_uri = GetPhaseBaseUri(base_uri, phase_index)
-    motif_base_uri = '%s/motif/' % (phase_base_uri)
-    motif_background_features_uri = phase_params.motif_expansion.background_features_uri.encode('ascii','ignore') # protobuf returns unicodes but we need strings    
-    CHECK_GE(phase_index, 1, 'Can not do a motif expansion as first phase')    
-    # merge the matches of all previous phases
-    #prev_phase_match_uris = [GetPhaseMatchesUri(base_uri, prev_phase_index) for  prev_phase_index in range(phase_index)]
-    merge_phase_matches_flow = util.MergeMatchesFlow(motif_base_uri, prev_phase_match_results)
-    matches = merge_phase_matches_flow.GetOutput()
-    matches_to_ig_flow = util.MatchesToImageGraphFlow(motif_base_uri, matches, tide)
-    image_graph = matches_to_ig_flow.GetOutput()
-    create_motif_cluster_edges_flow = motif.CreateMotifClusters(motif_base_uri, image_graph, matches)    
-    extract_motif_matches = motif.ExtractMotifMatches(motif_base_uri, features, matches, create_motif_cluster_edges_flow.GetOutput())
-    motif_matches = extract_motif_matches.GetOutput()
-    extract_motifs = motif.ExtractMotifFeatures(motif_base_uri, features, motif_matches)
-    motifs = extract_motifs.GetOutput()
-    create_motif_index = motif.CreateMotifIndex(motif_base_uri, motifs, motif_background_features_uri, itergraph_params.cbir.flann)
-    motif_cbir_index = create_motif_index.GetOutput('motif_index')    
-    query_motif_index = motif.QueryMotifIndex(motif_base_uri, features, motif_cbir_index, itergraph_params.cbir.scorer)
-    motif_cbir_results = query_motif_index.GetOutput()    
-    create_motif_expansion_candidates = motif.CreateMotifExpansionCandidates(motif_base_uri, motifs, image_graph, motif_cbir_results)    
-    ordering_method = 'INCREASING_BY_CBIR_RANK'
-    sort_candidates_flow = util.SortMatchCandidatesFlow(motif_base_uri, ordering_method, create_motif_expansion_candidates.GetOutput())
-    self.candidates = sort_candidates_flow.GetOutput()      
-    return
-    
+
+# class CreateMotifExpansionMatchCandidatesMetaFlow(object):
+#   def __init__(self, base_uri, phase_index, itergraph_params, tide, features, prev_phase_match_results):    
+#     super(CreateMotifExpansionMatchCandidatesMetaFlow, self).__init__()
+#     phase_params = itergraph_params.phase[phase_index]
+#     phase_base_uri = GetPhaseBaseUri(base_uri, phase_index)
+#     motif_base_uri = '%s/motif/' % (phase_base_uri)
+#     motif_background_features_uri = phase_params.motif_expansion.background_features_uri.encode('ascii','ignore') # protobuf returns unicodes but we need strings    
+#     CHECK_GE(phase_index, 1, 'Can not do a motif expansion as first phase')    
+#     # merge the matches of all previous phases
+#     #prev_phase_match_uris = [GetPhaseMatchesUri(base_uri, prev_phase_index) for  prev_phase_index in range(phase_index)]
+#     merge_phase_matches_flow = util.MergeMatchesFlow(motif_base_uri, prev_phase_match_results)
+#     matches = merge_phase_matches_flow.GetOutput()
+#     matches_to_ig_flow = util.MatchesToImageGraphFlow(motif_base_uri, matches, tide)
+#     image_graph = matches_to_ig_flow.GetOutput()
+#     create_motif_cluster_edges_flow = motif.CreateMotifClusters(motif_base_uri, image_graph, matches)    
+#     extract_motif_matches = motif.ExtractMotifMatches(motif_base_uri, features, matches, create_motif_cluster_edges_flow.GetOutput())
+#     motif_matches = extract_motif_matches.GetOutput()
+#     extract_motifs = motif.ExtractMotifFeatures(motif_base_uri, features, motif_matches)
+#     motifs = extract_motifs.GetOutput()
+#     create_motif_index = motif.CreateMotifIndex(motif_base_uri, motifs, motif_background_features_uri, itergraph_params.cbir.flann)
+#     motif_cbir_index = create_motif_index.GetOutput('motif_index')    
+#     query_motif_index = motif.QueryMotifIndex(motif_base_uri, features, motif_cbir_index, itergraph_params.cbir.scorer)
+#     motif_cbir_results = query_motif_index.GetOutput()    
+#     create_motif_expansion_candidates = motif.CreateMotifExpansionCandidates(motif_base_uri, motifs, image_graph, motif_cbir_results)    
+#     ordering_method = 'INCREASING_BY_CBIR_RANK'
+#     sort_candidates_flow = util.SortMatchCandidatesFlow(motif_base_uri, ordering_method, create_motif_expansion_candidates.GetOutput())
+#     self.candidates = sort_candidates_flow.GetOutput()      
+#     return
+#     
 
 
 class InitIterativeGraphFlow(core.Flow):
@@ -179,7 +179,7 @@ class InitIterativeGraphFlow(core.Flow):
     return
 
 class BuildIterativeGraphFlow(object):
-  def __init__(self, base_uri, features, cbir_results, itergraph_params, tide):    
+  def __init__(self, base_uri, features, cbir_results, itergraph_params):    
     CheckIsString(base_uri)
     CHECK(py_pert.IsValidUri(base_uri))
     
@@ -195,9 +195,9 @@ class BuildIterativeGraphFlow(object):
         candidates = canidates_by_cbir_score_flow.candidates
       elif phase_params.type == itergraph_pb2.PhaseParams.PHASE_TYPE_CBIR_RANK:
         candidates = canidates_by_cbir_rank_flow.candidates
-      elif phase_params.type == itergraph_pb2.PhaseParams.PHASE_TYPE_MOTIF_EXPANSION:
-        motif_expansion_flow = CreateMotifExpansionMatchCandidatesMetaFlow(base_uri, phase_index, itergraph_params, tide, features, phase_match_resources)
-        candidates = motif_expansion_flow.candidates   
+#       elif phase_params.type == itergraph_pb2.PhaseParams.PHASE_TYPE_MOTIF_EXPANSION:
+#         motif_expansion_flow = CreateMotifExpansionMatchCandidatesMetaFlow(base_uri, phase_index, itergraph_params, tide, features, phase_match_resources)
+#         candidates = motif_expansion_flow.candidates   
       else:
         LOG(FATAL, 'unexpected')  
       

@@ -1,11 +1,6 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
 <style>
-
-* {
- font-family: sans-serif; 
-}
-
 .node {
     
 }
@@ -26,13 +21,13 @@
   fill: none;
   stroke: red;
   stroke-width: 2px;
-  stroke-opacity: 0.75;
+  stroke-opacity: 0.5;
 }
 
 .correspondence {
   stroke: yellow;
   stroke-width: 2px;
-  stroke-opacity: 0.25;
+  stroke-opacity: 0.1;
 }
 
 .legend-box {      
@@ -45,24 +40,11 @@
 
 <body>
 
-<h1>Image Graph Neighborhood Viewer</h1>
-The graph below shows a portion of the image graph around the initial image.<br>
-<div style="font-size: 11px; width: 800px;">
-<b>Graph View: </b> You can zoom in and out with the mouse wheel or by double clicking and by holding SHIFT while double clicking.  Click and drag on the background to pan.  Click and drag a node to reposition it.  Hover over a vertex to add it's neighbor vertices, or click the "expand" button to add the neighbor vertices of all shown vertices.
-<br>  
-<b>Image View: </b> Hovering over a vertex shows the corresponding image while hovering over an edge, shows the image pair annotated with the matching features.  Move mouse over correspondences to highlight individual feature matches.
-</div> 
+<div id="graph"></div>
+<div id="controls"><button id="expand_button">Expand</button></div>
 
-<div style="float:left; margin:10px">
-<h2>Graph View</h2>
-	<div id="graph"></div>
-	<div id="controls"><button id="expand_button">Expand 1-hop neighbors</button></div>
-</div>
-
-<div id="edge_preview" style="float:left; margin:10px">
-<h2>Image View</h2>
-</div>   
-
+<img id="image_preview" style="max-width: 400px; max-height: 400px; float:left;">
+<div id="edge_preview" style="float:left;"></div>   
 
 
 <!--<script src="http://d3js.org/d3.v3.js"></script>-->
@@ -72,7 +54,7 @@ The graph below shows a portion of the image graph around the initial image.<br>
 <script>
 
 if (window.location.protocol == "file:"){
-  alert('You must view this page served from a webserver, not as a local file (a cross domain security restriction). TIP: From a terminal, cd to the directory containing index.html and run this command: python -m SimpleHTTPServer.')    
+  alert('You must view this using a webserver, not as a local file (cross domain requirement).')    
 }
 
 function HashTable(obj)
@@ -315,10 +297,13 @@ function ExpandNode(image_id){
    
 }
 
+function ClearPreview(){
+  d3.select('#edge_preview svg').remove();
+  d3.select('#image_preview').style('display', 'none');
+}
 
 function DrawMatchPreviewSvg(match_data){
-  d3.select('#edge_preview svg').remove(); 
-  var scaling = 0.75;
+  var scaling = 0.5;
   var width = (match_data.image_a_size[0] + match_data.image_b_size[0])*scaling
   var height = Math.max(match_data.image_a_size[1], match_data.image_b_size[1])
 	var image_a_url = 'images/' + match_data.image_a +  '.jpg'
@@ -388,41 +373,15 @@ function DrawMatchPreviewSvg(match_data){
       .on('mouseout', function(d, i) { SetCorrespondenceState(i, false)})
 }
 
-
-function DrawImagePreviewSvg(image_url, image_w, image_h){
-  d3.select('#edge_preview svg').remove(); 
-  
-  var scaling = 0.75;
-  var width = image_w;
-  var height = image_h;
-  
-  var svg = d3.select('#edge_preview').append('svg')
-    .attr('width', width)
-    .attr('height', height)   
-  .append('g')
-    .attr("transform", "scale("+ scaling +")");
-    
-  svg.append('image')
-    .attr('x', 0)
-    .attr('y', 0)
-    .attr('width', image_w)
-    .attr('height', image_h)
-    .attr('xlink:href', image_url )
-}
-
-function FetchImage(url, callback) {
-    var myImage = new Image();
-    myImage.name = url;
-    myImage.src = url;
-    myImage.onload = function() { var h = this.height; var w = this.width; callback(url, w,h);}    
-}
-
-function UpdateImagePreview(image) {  
-  var image_url = 'images/' + image + '.jpg';
-  FetchImage(image_url, DrawImagePreviewSvg);     
+function UpdateImagePreview(image) {
+  ClearPreview()
+  d3.select("img#image_preview").attr("src", 'images/' + image + '.jpg');
+  d3.select('#image_preview').style('display', 'block');     
 }
 
 function UpdateEdgePreview(image_a, image_b) {
+  ClearPreview()
+  
   if (image_b < image_a){
     var image_b_tmp = image_b
     image_b = image_a
@@ -447,6 +406,14 @@ function ExpandAllNodes(){
   }  
 }
 
+var aspect = width / height;
+function updateWindow(d){
+    console.log(d.target.window.innerWidth)
+    var targetWidth = d.target.window.innerWidth;
+    svg.attr("width", targetWidth)
+       .attr("height", targetWidth / aspect)    
+}
+window.onresize = updateWindow;
 
 url_vars = getUrlVars();
 var image_id = url_vars['initial_image']

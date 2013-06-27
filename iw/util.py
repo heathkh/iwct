@@ -54,7 +54,7 @@ def MakeProgressBar(num_items):
   pbar = ProgressBar(widgets=widgets, maxval=num_items).start()
   return pbar
   
-def PackImagesDirectoryToPert(src_path, output_uri, randomize = True, max = None):  
+def PackImagesDirectoryToPert(src_path, output_uri, randomize = True, max_num_images = None):  
   CHECK(os.path.isdir(src_path), 'expected dir: %s' % src_path)
   filenames = glob.glob('%s/*.jpg' % src_path)  
   if randomize:
@@ -62,8 +62,8 @@ def PackImagesDirectoryToPert(src_path, output_uri, randomize = True, max = None
   else:
     filenames.sort()
 
-  if max:
-    filenames = filenames[:max]
+  if max_num_images:
+    filenames = filenames[:max_num_images]
     
   writer = py_pert.StringTableWriter()
   CHECK(writer.Open(output_uri, 1))
@@ -90,6 +90,8 @@ def PackImagesDirectoryToPert(src_path, output_uri, randomize = True, max = None
       
   writer.Close()  
   return
+
+
 
 def ExtractFeatures(feature_extractor_params, images_uri, features_uri):
   extractor = py_featureextractor.CreateFeatureExtractorOrDie(feature_extractor_params)  
@@ -126,6 +128,9 @@ def SaveObject(obj, path):
   f = open(path, 'w')
   pickle.dump(obj, f, protocol=2)
   return
+
+
+
 
 
 def HashProto(proto):

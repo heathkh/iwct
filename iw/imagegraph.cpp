@@ -4,8 +4,11 @@
 #include "snap/pert/pert.h"
 #include "iw/iw.pb.h"
 #include "snap/google/base/stringprintf.h"
+#include "snap/google/glog/logging.h"
 #include "tide/tide.h"
 #include <algorithm>    // std::max
+
+
 
 namespace iw {
 
@@ -20,23 +23,32 @@ float NfaToWeight(float nfa){
   return weight;
 }
 
-bool CreateImageGraph(const std::string& matches_uri, const std::string& tide_uri, ImageGraph* ig){
+bool CreateImageGraph2(const std::string& matches_uri, const std::string& photoid_uri, ImageGraph* ig){
   CHECK(ig);
   ig->Clear();
-  pert::StringTableShardSetReader reader;
-  CHECK(reader.Open(matches_uri));
-  scul::AutoIndexer<uint64> imageid_to_vertexid;
-  std::string image_pair_key;
-  GeometricMatchResult match_result;
-  uint64 image_a, image_b;
+
 
   // Ensure that the graph contains a vertex for every image... even if it was
   // not matched by pulling image ids from the tide dataset instead of the set
   // of matched images (which is generally a subset).
-  tide::TideDataset tide_dataset(tide_uri);
-  BOOST_FOREACH(uint64 image_id, tide_dataset.GetImageIds()){
+  pert::StringTableReader photoid_reader;
+  CHECK(photoid_reader.Open(photoid_uri));
+
+  scul::AutoIndexer<uint64> imageid_to_vertexid;
+  string key, value;
+  while (photoid_reader.Next(&key, &value)){
+    uint64 image_id = KeyToUint64(key);
     imageid_to_vertexid.GetIndex(image_id);
   }
+  photoid_reader.Close();
+
+  pert::StringTableShardSetReader reader;
+  CHECK(reader.Open(matches_uri));
+
+  std::string image_pair_key;
+  GeometricMatchResult match_result;
+  uint64 image_a, image_b;
+
 
   int max_phase_id = 0;
 

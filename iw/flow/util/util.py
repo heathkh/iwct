@@ -2,8 +2,8 @@
 
 import shutil
 import math
-from deluge import core
-from deluge import mr
+from snap.deluge import core
+from snap.deluge import mr
 from pert import py_pert
 from pyglog import *
 #from iw.matching.cbir import util as cbirutil
@@ -18,7 +18,7 @@ from iw.eval.labelprop.eval2 import py_eval2
 from iw.eval.labelprop.eval2 import eval2_pb2       
 from iw.matching import feature_extractor_density as fed
 from iw.matching.cbir.bow import bow_pb2
-from iw.matching.cbir.bow.inria import py_inria
+#from iw.matching.cbir.bow.inria import py_inria
 from iw.matching.cbir.bow.ctis import py_ctis
 
 class FindDuplicatesFlow(core.PipesFlow):
@@ -473,18 +473,18 @@ class SortFlow(core.PipesFlow):
 
 
 class MatchesToImageGraphFlow(core.Flow):  
-  def __init__(self, base_uri, matches, tide):
+  def __init__(self, base_uri, matches, photoids):
     super(MatchesToImageGraphFlow, self).__init__()
     self.AddInput('matches', matches )    
-    self.AddInput('tide', tide )        
+    self.AddInput('photoids', photoids )        
     self.AddOutput('image_graph', core.PertResource(self, "%s/image_graph.pert" % base_uri)  )    
     return
   
   def Run(self):
     matches_uri = self.GetInput('matches').GetUri()
-    tide_uri = self.GetInput('tide').GetUri()
+    photoids_uri = self.GetInput('photoids').GetUri()
     image_graph_uri = self.GetOutput().GetUri()
-    ok, ig = py_imagegraph.CreateImageGraph(matches_uri, tide_uri)
+    ok, ig = py_imagegraph.CreateImageGraph2(matches_uri, photoids_uri)
     CHECK(ok)
     py_imagegraph.SaveImageGraph(ig, image_graph_uri)    
     CHECK(py_pert.Exists(image_graph_uri))
@@ -787,4 +787,27 @@ class CbirMetaFlow(object):
     
     return
       
-  
+
+class CopyPertFlow(core.Flow):  
+  def __init__(self, input_uri, dst_uri):
+    super(CopyPertFlow,self).__init__()
+    #self.input = core.PertResource(self, input_uri, is_generated=False, check_exists=True)
+    #self.AddInput('input', input)  # every flow must have an input... this is a dummy input that will trigger the generation of the proto record
+    self.input_uri = input_uri
+    ok, scheme, path, error = py_pert.ParseUri(self.input_uri)
+    input_basename = os.path.basename(path) 
+    self.AddOutput('output', core.PertResource(self, "%s/%s" % (dst_uri, input_basename) ))    
+    return
+    
+  def Run(self):    
+    output_uri = self.GetOutput().GetUri()
+    py_pert.CopyUri(self.input_uri, output_uri)
+    return
+
+class PertDropValueFlow(core.PipesFlow):  
+  def __init__(self, input, output_uri):
+    super(PertDropValueFlow,self).__init__()
+    self.SetPipesBinary(__file__, 'mr_drop_value')
+    self.AddInput('input', input)   
+    self.AddOutput('output', core.PertResource(self, output_uri) )    
+    return  

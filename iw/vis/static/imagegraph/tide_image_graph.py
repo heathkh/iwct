@@ -13,16 +13,17 @@ from pyglog import *
 from iw import py_imagegraph
 from iw import util as iwutil
 
-def GetCachedTideImageGraph(image_graph_uri, tide_uri):
+def GetCachedTideImageGraph(base_uri, image_graph_uri, tide_uri):
   hash_str = ''
   for uri in [image_graph_uri, tide_uri]:
-    ok, scheme, path, error = py_pert.ParseUri(uri)    
-    hash_str += (uri + str(os.path.getmtime(path)) + str(os.path.getsize(path)))    
+    if uri: 
+      ok, scheme, path, msg = py_pert.ParseUri(uri)
+      hash_str += (uri + str(os.path.getmtime(path)) + str(os.path.getsize(path)))    
   hash_val = hash(hash_str)
-  cache_path = './tide_image_graph.%s.pickle' % (hash_val)
+  cache_path = '%s/tide_image_graph.%s.pickle' % (base_uri, hash_val)
   
   tide_image_graph = None
-  if os.path.exists(cache_path):
+  if False and os.path.exists(cache_path):
     f = open(cache_path, 'r')
     tide_image_graph = pickle.load(f)
   else:
@@ -35,7 +36,12 @@ def GetCachedTideImageGraph(image_graph_uri, tide_uri):
 class TideImageGraph(object):
   """ The image graph annotated with tide info. """
   def __init__(self, image_graph_uri, tide_uri):
-    self.tide = tide.GetCachedTideDataset(tide_uri)    
+    
+    self.tide = None
+    if tide_uri:
+      #self.tide = tide.GetCachedTideDataset(tide_uri)
+      self.tide = tide.TideDataset(tide_uri)
+          
     ok, image_graph_data = py_imagegraph.LoadImageGraph(image_graph_uri)
     CHECK(ok) 
     num_images = len(image_graph_data.vertices)
@@ -52,11 +58,12 @@ class TideImageGraph(object):
       image_id = self.vertexid_to_imageid[node_id]
       node = g.vs[node_id]      
       node['image_id'] = image_id
-            
-      label_data = self.tide.GetLabel(image_id)
-      if label_data != None:        
-        node['object_id'] = label_data.object_id
-        node['label'] = label_data.label      
+      
+      if self.tide:
+        label_data = self.tide.GetLabel(image_id)
+        if label_data != None:        
+          node['object_id'] = label_data.object_id
+          node['label'] = label_data.label      
     
     num_edges = len(image_graph_data.edges)
     progress = iwutil.MakeProgressBar(num_edges)
@@ -103,8 +110,8 @@ class TideImageGraph(object):
     return self.graph.degree(vertex_id)
   
 
-  def GetClustering(self):
-    cache_path = './cluster_results.pickle'
+  def GetClustering(self, base_path):
+    cache_path = '%s/cluster_results.pickle' % (base_path)
     results = None
     if os.path.exists(cache_path):      
       results = iwutil.LoadObject(cache_path)
@@ -118,8 +125,8 @@ class TideImageGraph(object):
     LOG(INFO, 'Computing clustering')  
     # remove any singleton nodes for efficiency
     #g = self.graph.induced_subgraph(self.graph.vs.select(_degree_gt=0))
-    #dend = self.graph.community_walktrap( weights='weight_as_similarity', steps=4)
-    dend = self.graph.community_fastgreedy( weights='weight_as_similarity')
+    dend = self.graph.community_walktrap( weights='weight_as_similarity', steps=4)
+    #dend = self.graph.community_fastgreedy( weights='weight_as_similarity')
     clustering = dend.as_clustering()
     LOG(INFO, 'done clustering')
     return clustering

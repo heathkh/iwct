@@ -53,7 +53,7 @@ d3.legend = function(g) {
         .attr("x",0)
         .attr("width","0.6em")
         .attr("height","0.6em")
-        .style("fill",function(d) { console.log(d.value.color);return d.value.color})
+        .style("fill",function(d) { return d.value.color})
     
     // Reposition and resize the box
     var lbbox = li[0][0].getBBox()  

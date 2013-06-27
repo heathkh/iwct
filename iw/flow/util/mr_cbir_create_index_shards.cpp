@@ -45,7 +45,7 @@ public:
     CHECK(context.nextValue());
     CHECK(features.ParseFromString(context.getInputValue()));
     index.AddPreallocated(image_id, features);
-    CHECK(!context.nextValue());
+    CHECK(!context.nextValue()) << "This means your dataset includes duplicate images (hash to same key)";
     //while (context.nextValue()){
     //  counters_.Increment("duplicated_keys");
     //}
