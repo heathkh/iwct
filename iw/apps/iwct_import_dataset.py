@@ -18,10 +18,6 @@ import StringIO
 from iw import iw_pb2
 import glob
 
-def ImportImages(filenames, output_uri):
-  
-  return
-
 
 class DataImporterApp(object):
   def __init__(self):
@@ -36,7 +32,6 @@ class DataImporterApp(object):
           pert_filenames.append(os.path.join(root, filename))
     if len(pert_filenames) != 2:
       return False
-    
     src = pert_filenames[0]
     dst = dataset_root + '/' + os.path.basename(pert_filenames[0])
     shutil.move(src, dst)
