@@ -37,7 +37,7 @@ def InstallProtobuffers():
   tar.close()  
   src_path = '/tmp/protobuf-2.4.1/'
   assert(os.path.exists(src_path))  
-  cmd = 'cd %s && export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=cpp && export CCFLAGS=-fPIC && export CXXFLAGS=-fPIC && ./configure && make -j10 && sudo make install && cd python && sudo  PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=cpp python setup.py install' % (src_path)
+  cmd = 'cd %s && export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=cpp && export CCFLAGS=-fPIC && export CXXFLAGS=-fPIC && ./configure && make -j10 && sudo make install && cd python && sudo  PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=cpp python setup.py install && sudo ldconfig' % (src_path)
   ExecuteCmd(cmd)  
   return
 
