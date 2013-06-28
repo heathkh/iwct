@@ -12,7 +12,6 @@ from snap.google.base import  py_base
 from snap.pert import py_pert
 from snap.pyglog import *
 import os
-
 from iw.vis.static.imagegraph import exporter
 
 class RunPipelineApp(object):
@@ -21,25 +20,20 @@ class RunPipelineApp(object):
     return
 
   def Run(self):
-    #dataset_name = self.__SelectDataset()
-    dataset_name = 'tide_v12'
+    dataset_name = self.__SelectDataset()
     local_data_path = '%s/%s/' % (self.local_data_directory, dataset_name)
     local_data_uri = 'local://%s' %  (local_data_path)
     input_images_uri = '%s/photoid_to_image.pert' % (local_data_uri)
     root_uri = 'maprfs://data/itergraph/'
     num_images =  self.__GetNumImages(input_images_uri)
-    
     dataset_uri = '%s/%s' % (root_uri, dataset_name)
-    #self.__UploadData(input_images_uri, dataset_uri)
-    #params = self.__SetupParams(num_images, dataset_name, root_uri)
-    #merged_matches, photoids = self.__MatchImages(params, dataset_uri)
-    #results_uri = self.__DownloadResults(merged_matches, dataset_uri, local_data_uri)
-    #self.__CreateImageGraph(merged_matches, photoids, results_uri)
+    self.__UploadData(input_images_uri, dataset_uri)
+    params = self.__SetupParams(num_images, dataset_name, root_uri)
+    merged_matches, photoids = self.__MatchImages(params, dataset_uri)
+    results_uri = self.__DownloadResults(merged_matches, dataset_uri, local_data_uri)
+    self.__CreateImageGraph(merged_matches, photoids, results_uri)
     self.__ExportAsHtml(local_data_path)
-    
     return
-  
-  
   
   def __ListDatasets(self):
     return  [ name for name in os.listdir(self.local_data_directory) if os.path.isdir(os.path.join(self.local_data_directory, name)) ]

@@ -17,16 +17,27 @@ import Image
 import StringIO
 from iw import iw_pb2
 import glob
+import exceptions
 
-def ImportImages(filenames, output_uri):
-  
-  return
 
 
 class DataImporterApp(object):
   def __init__(self):
-    self.local_data_directory = os.path.expanduser('~/Desktop/datasets')     
+    self.local_data_directory = os.path.expanduser('~/Desktop/datasets')
     return
+  
+  def __GetFileSizeBytes(self, url):
+    info = urllib.urlopen(url).info()
+    files_size_bytes = int(info['Content-Length'])
+    return files_size_bytes
+  
+  def __GetDiskFreeSpaceBytes(self, pathname):
+    "Get the free space of the filesystem containing pathname"
+    stat= os.statvfs(pathname)
+    # use f_bfree for superuser, or f_bavail if filesystem
+    # has reserved space for superuser
+    return stat.f_bfree*stat.f_bsize
+    
   
   def __ImportTide(self, extract_dir, dataset_root):
     pert_filenames = []
@@ -108,21 +119,45 @@ class DataImporterApp(object):
         print 'If you do not have a dataset ready, you can use this example: '
         print 'http://graphics.stanford.edu/imagewebs/data/tide_v12.tar'
         print ''        
-        provided_url = raw_input('Please enter url to dataset archive: ')
-        while not dataset_name:
-          dataset_name = raw_input('Please enter name for dataset (no spaces): ')
-          if ' ' in dataset_name:
-            dataset_name = None
+#         provided_url = raw_input('Please enter url to dataset archive: ')
+#         while not dataset_name:
+#           dataset_name = raw_input('Please enter name for dataset (no spaces): ')
+#           if ' ' in dataset_name:
+#             dataset_name = None
         
 #         provided_url = 'http://graphics.stanford.edu/imagewebs/data/british_telephone_booth.zip'
 #         dataset_name = 'british_telephone_booth'
         
 #         provided_url = 'http://graphics.stanford.edu/imagewebs/data/tide_v12.tar'
 #         dataset_name = 'tide_v12'
+
+        provided_url = '/media/vol-4fcb8215/stanford_flickr_keyword.tar'
+        dataset_name = 'stanford_flickr_keyword'
+      
+      
+        print 'Checking for space...'
+        src_size_bytes = self.__GetFileSizeBytes(provided_url)
+        tmp_size_bytes = self.__GetDiskFreeSpaceBytes('/tmp')
+        dst_size_bytes = self.__GetDiskFreeSpaceBytes(self.local_data_directory)
+        
+        print 'src_size_bytes: %d' % (src_size_bytes)
+        print 'tmp_size_bytes: %d' % (tmp_size_bytes)
+        print 'dst_size_bytes: %d' % (dst_size_bytes)
+        
+        if src_size_bytes > tmp_size_bytes:          
+          raise exceptions.RuntimeError('Source file is larger than available tmp space... ')
+        
+        if src_size_bytes > dst_size_bytes:          
+          raise exceptions.RuntimeError('Source file is larger than available free space on destination partition... Consider expanding the root partition to make more space. [TODO(heathkh): Link to docs here] ')
         
         print 'Downloading...'
         extract_dir = tempfile.mkdtemp()
         archive_filename, headers = urllib.urlretrieve(provided_url, extract_dir + '/download' )
+        #archive_filename, headers = urllib.urlretrieve(provided_url )
+        
+        print archive_filename
+        
+        exit(0)
         
         if tarfile.is_tarfile(archive_filename):
           tar = tarfile.TarFile(archive_filename, 'r')
