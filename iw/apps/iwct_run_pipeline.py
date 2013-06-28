@@ -30,13 +30,16 @@ class RunPipelineApp(object):
     self.__UploadData(input_images_uri, dataset_uri)
     params = self.__SetupParams(num_images, dataset_name, root_uri)
     merged_matches, photoids = self.__MatchImages(params, dataset_uri)
-    results_uri = self.__DownloadResults(merged_matches, dataset_uri, local_data_uri)
+    results_uri = self.__DownloadResults(merged_matches, dataset_uri,
+                                         local_data_uri)
     self.__CreateImageGraph(merged_matches, photoids, results_uri)
-    self.__ExportAsHtml(local_data_path)
+    self.__ExportAsHtml(local_data_path)    
+
     return
   
   def __ListDatasets(self):
-    return  [ name for name in os.listdir(self.local_data_directory) if os.path.isdir(os.path.join(self.local_data_directory, name)) ]
+    return  [ name for name in os.listdir(self.local_data_directory) if
+              os.path.isdir(os.path.join(self.local_data_directory, name)) ]
     
   def __SelectDataset(self):
     dataset = None
@@ -75,7 +78,8 @@ class RunPipelineApp(object):
     return results_uri
   
   def __CreateImageGraph(self, merged_matches, photoids, results_uri):
-    flow = flowutil.MatchesToImageGraphFlow(results_uri, merged_matches, photoids)
+    flow = flowutil.MatchesToImageGraphFlow(results_uri, merged_matches, 
+                                            photoids)
     CHECK(scheduler.FlowScheduler(flow).RunSequential())
     return 
   
@@ -91,21 +95,21 @@ class RunPipelineApp(object):
     html_export_path = '%s/results/html/' % local_data_path 
     if not os.path.exists(html_export_path):
       os.mkdir(html_export_path)    
-    exporter.ImageGraphExporter(html_export_path, images_uri, matches_uri, image_graph_uri, tide_uri).Run()
+    exporter.ImageGraphExporter(html_export_path, images_uri, matches_uri, 
+                                image_graph_uri, tide_uri).Run()
     return
-  
-    
   
   def __SetupParams(self, num_images, dataset_name, base_uri):
     
     feature_type = 'usift'
     desired_features_per_megapixel = 3000
     root_sift_normalization = True  
-    tune_flow = flowutil.TuneFeatureExtractorDensityFlow(base_uri, dataset_name, feature_type, desired_features_per_megapixel)
+    tune_flow = flowutil.TuneFeatureExtractorDensityFlow(base_uri, dataset_name,
+      feature_type, desired_features_per_megapixel)
     CHECK(scheduler.FlowScheduler(tune_flow).RunSequential())
     tuned_feature_extractor_params = iw_pb2.DensityTunedFeatureExtractorParams()
-    iwutil.LoadProtoFromUriOrDie(tuned_feature_extractor_params, tune_flow.GetOutput().GetUri())
-      
+    iwutil.LoadProtoFromUriOrDie(tuned_feature_extractor_params, 
+                                 tune_flow.GetOutput().GetUri())      
     params = itergraph_pb2.IterGraphParams()
     params.tuned_feature_extractor_params.CopyFrom(tuned_feature_extractor_params)
     params.image_matcher_config.CopyFrom(image_matcher_config.GetImageMatcherConfig(feature_type))
