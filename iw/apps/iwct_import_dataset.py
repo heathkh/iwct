@@ -55,8 +55,8 @@ class DataImporterApp(object):
     return True
   
   def __ImportImageArchive(self, extract_dir, dataset_root):
-    print 'importing image archive dataset'
     image_filenames = []
+    print 'Searching for image files...'
     for root, dirnames, filenames in os.walk(extract_dir):
       for filename in filenames:
         if fnmatch.fnmatch(filename, '*.jpg') or fnmatch.fnmatch(filename, '*.jpeg'):          
@@ -69,27 +69,28 @@ class DataImporterApp(object):
     fingerprinted_path = '%s/fingerprinted/' % (extract_dir)
     os.mkdir(fingerprinted_path)
   
+    print 'Fingerprinting image files...'
+    progress = util.MakeProgressBar(len(image_filenames))
     # rename all files according to fingerprint
     for i, filename in enumerate(image_filenames): 
       data = open(filename).read()    
       fp = py_base.FingerprintString(data)
       dst = '%s/%064d.jpg' % (fingerprinted_path, fp) # ensure lexical sort = numeric sort = key sort
       os.rename(filename, dst)
-    
+      progress.update(i)
     
     filenames = glob.glob('%s/*.jpg' % fingerprinted_path )
     filenames.sort()
-    
     output_uri = 'local://%s/photoid_to_image.pert' % (dataset_root) 
     
     # write to pert in sorted order
+    print 'Generating image PERT file...'
     writer = py_pert.StringTableWriter()
     CHECK(writer.Open(output_uri, 1))
     progress = util.MakeProgressBar(len(filenames))
     for i, filename in enumerate(filenames): 
       data = open(filename).read()    
-      key = py_base.Uint64ToKey(py_base.FingerprintString(data))
-      
+      key = py_base.Uint64ToKey(py_base.FingerprintString(data))      
       #try:
       im = Image.open(StringIO.StringIO(data))
       #except:
@@ -117,11 +118,11 @@ class DataImporterApp(object):
         print 'If you do not have a dataset ready, you can use this example: '
         print 'http://graphics.stanford.edu/imagewebs/data/tide_v12.tar'
         print ''        
-#         provided_url = raw_input('Please enter url to dataset archive: ')
-#         while not dataset_name:
-#           dataset_name = raw_input('Please enter name for dataset (no spaces): ')
-#           if ' ' in dataset_name:
-#             dataset_name = None
+        provided_url = raw_input('Please enter url to dataset archive: ')
+        while not dataset_name:
+          dataset_name = raw_input('Please enter name for dataset (no spaces): ')
+          if ' ' in dataset_name:
+            dataset_name = None
         
 #         provided_url = 'http://graphics.stanford.edu/imagewebs/data/british_telephone_booth.zip'
 #         dataset_name = 'british_telephone_booth'
@@ -129,9 +130,8 @@ class DataImporterApp(object):
 #         provided_url = 'http://graphics.stanford.edu/imagewebs/data/tide_v12.tar'
 #         dataset_name = 'tide_v12'
 
-        provided_url = '/media/vol-4fcb8215/stanford_flickr_keyword.tar'
-        dataset_name = 'stanford_flickr_keyword'
-      
+        #provided_url = '/media/vol-4fcb8215/stanford_flickr_keyword.tar'
+        #dataset_name = 'stanford_flickr_keyword'
       
         print 'Checking for space...'
         src_size_bytes = self.__GetFileSizeBytes(provided_url)
@@ -150,13 +150,10 @@ class DataImporterApp(object):
         
         print 'Downloading...'
         extract_dir = tempfile.mkdtemp()
-        archive_filename, headers = urllib.urlretrieve(provided_url, extract_dir + '/download' )
-        #archive_filename, headers = urllib.urlretrieve(provided_url )
+        #archive_filename, headers = urllib.urlretrieve(provided_url, extract_dir + '/download' )
+        archive_filename, headers = urllib.urlretrieve(provided_url )
         
-        print archive_filename
-        
-        exit(0)
-        
+        print 'Unpacking archive...'
         if tarfile.is_tarfile(archive_filename):
           tar = tarfile.TarFile(archive_filename, 'r')
           tar.extractall(extract_dir)
@@ -171,10 +168,11 @@ class DataImporterApp(object):
       if not os.path.exists(dataset_root):
         os.makedirs(dataset_root)
       
+      print 'Importing archive...'
       if self.__ImportTide(extract_dir, dataset_root):
-        print 'imported tide...'        
+        print 'Done importing tide archive...'        
       elif self.__ImportImageArchive(extract_dir, dataset_root):
-        print 'imported image archive...'
+        print 'Done importing image archive...'
       else:
         print 'nothing could be imported...'
           
