@@ -31,6 +31,17 @@ Click the **+** button next to **Access Keys** and then click the **Create new r
 
 """"""""""""""""""""""""""
 
+<<<<<<< HEAD
+=======
+Click the **+** button next to **Access Keys** and then click the **Create New Root Key** button.
+
+.. image:: _static/how_to_get_key_new_access_keys.png
+   :width: 100%
+   :align: center
+   
+""""""""""""""""""""""""""
+
+>>>>>>> branch 'master' of https://github.com/heathkh/iwct.git
 Click the **Download key file** button.
 
 .. image:: _static/how_to_get_key_download.png
