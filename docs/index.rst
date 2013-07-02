@@ -1,8 +1,12 @@
-####################################
-Image Webs Cloud Tools Documentation
-####################################
+###########################
+Image Webs Cloud Tools Docs
+###########################
 
-The documentation explains how to build `Image Webs <http://graphics.stanford.edu/imagewebs>`_.
+This document explains how to build `Image Webs <http://graphics.stanford.edu/imagewebs>`_ using the Image Web Cloud Tools.
+
+**What is an image web?**
+
+  Browse a `gallery of Image Webs <http://graphics.stanford.edu/imagewebs/browse.html>`_ or `read more about image webs <http://graphics.stanford.edu/imagewebs>`_.
 
 
 **Who should read this?**

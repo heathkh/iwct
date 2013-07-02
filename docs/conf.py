@@ -39,8 +39,6 @@ templates_path = ['_templates']
 # The suffix of source filenames.
 source_suffix = '.rst'
 
-
-
 # The encoding of source files.
 #source_encoding = 'utf-8-sig'
 
@@ -108,9 +106,9 @@ html_theme = 'default'
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-html_theme_options = {
- 'externalrefs' : True,
-}
+#html_theme_options = {
+# 'externalrefs' : False,
+#}
 
 html_context = {"script_files": ["_static/bootstrap/bootstrap.min.js",                                 
                                  ],
@@ -158,16 +156,16 @@ html_use_smartypants = True
 #html_additional_pages = {}
 
 # If false, no module index is generated.
-#html_domain_indices = True
+html_domain_indices = False
 
 # If false, no index is generated.
-#html_use_index = True
+html_use_index = False
 
 # If true, the index is split into individual pages for each letter.
 #html_split_index = False
 
 # If true, links to the reST sources are added to the pages.
-#html_show_sourcelink = True
+html_show_sourcelink = False
 
 # If true, "Created using Sphinx" is shown in the HTML footer. Default is True.
 html_show_sphinx = False
