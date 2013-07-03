@@ -20,7 +20,7 @@ To use your own image collection, you'll need to place jpeg format image files i
 
 .. note:: 
 
-  For convenience, place your .zip or .tar file on a webserver so you can easily download it to your workstation using in the next step.   
+  For convenience, place your .zip or .tar file on a webserver so you can easily download it to your workstation in the next step.   
 
 Import Data
 -----------
@@ -31,12 +31,7 @@ Open a terminal (right click on desktop and select **Open in terminal** from the
 
    iwct_import_dataset
 
-<<<<<<< HEAD
 At the prompt ``Please enter url to dataset archive:``, provide the path to your tar or zip image archive in URL format (or use the URL for the example dataset). 
-=======
-At the prompt ``Please enter url to dataset archive:``, provide the path to your tar or zip image archive in URL format (or copy the provided URL for the default example dataset). 
->>>>>>> branch 'master' of https://github.com/heathkh/iwct.git
-
 
 .. note::
 
@@ -44,16 +39,10 @@ At the prompt ``Please enter url to dataset archive:``, provide the path to your
 
 
 
-<<<<<<< HEAD
+
 At the prompt ``Please enter name for dataset (no spaces):``, provide a name for your dataset (no spaces - only letters, numbers, underscores).
 
 This creates a new dataset directory :file:`/home/ubuntu/Desktop/datasets/{dataset_name}` containing a PERT file :file:`imageid_to_image.pert` containing your dataset images. 
-=======
-At the prompt ``Please enter name for dataset (no spaces): ``, provide a name for your dataset (letters, numbers, underscore are ok, but no spaces).
-
-This creates a new directory :file:`/home/ubuntu/Desktop/datasets/{dataset_name}` containing a PERT file :file:`imageid_to_image.pert` containing your dataset images. 
->>>>>>> branch 'master' of https://github.com/heathkh/iwct.git
-
 
 
 
