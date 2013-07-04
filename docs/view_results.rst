@@ -19,6 +19,6 @@ Now open a webbrowser to the url output by the previous command
    chromium-browser localhost:8000
    
    
- .. note::
+.. note::
 
-  The viewer inside the html directory is self-contained and portable.  Simply place it on any webserver to share your image-graph viewer with others. 
+  The viewer inside the html directory is self-contained and portable.  Simply copy the html directory to any webserver to share your image-graph viewer with others.

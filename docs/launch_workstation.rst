@@ -16,7 +16,7 @@ To launch and connect to your workstation:
 
 #. Go to the IWCT workstation console: http://iwct.dasgizmo.net
 #. Click **login** and enter your username and password (or click **register** if you don't have an account).
-#. Click the **connect** button next to a workstation workstation (or the **create new workstation"** button if no workstations are listed).
+#. Click the **connect** button next to a workstation workstation (or the **create new workstation** button if no workstations are listed).
 
 .. note::
 

@@ -17,7 +17,8 @@ Install NX Client
 The `NX client <http://www.nomachine.com>`_ allows you to use another computer remotely as if it were your local machine.   It is designed to give you virtually seamless full-screen graphical sessions even across poor connections like airplane WiFi or 3G mobile. Please install the free NX client for your OS:
 
  - `Linux <http://www.nomachine.com/download-client-linux.php>`_
- - `Mac OSX <http://www.nomachine.com/preview/download-package.php?Prod_Id=13>`_
+ - `Mac OSX 10.3-10.6 <http://www.nomachine.com/download-package.php?Prod_Id=3834>`_
+ - `Mac OSX 10.7 <http://www.nomachine.com/preview/download-package.php?Prod_Id=13>`_
  - `Windows <http://www.nomachine.com/download-package.php?Prod_Id=3835>`_
 
 
