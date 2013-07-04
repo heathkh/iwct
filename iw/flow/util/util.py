@@ -227,7 +227,7 @@ class CbirCreateIndexShardsFlow(core.PipesFlow):
   
   def PreRunConfig(self):
     min_num_shards = self.ComputeMinNumIndexShards()    
-    CHECK_GE(self.num_shards, min_num_shards)
+    CHECK_GE(self.num_shards, min_num_shards, 'Your dataset requires at least %d index shards, but you have requested only %d.  Please increase the value of the parameter cbir.full.num_index_shards and try again.' % (min_num_shards, self.num_shards ))
     print 'num_shards: %d' % (self.num_shards)
     self.num_reduce_jobs = self.num_shards
     
@@ -281,6 +281,7 @@ class CbirQueryIndexShardFlow(core.PipesFlow):
     self.parameters['mapred.map.child.java.opts'] = '-Xmx1024m'
     self.parameters['mapred.reduce.child.java.opts'] = '-Xmx1024m'    
     self.parameters['mapred.map.tasks.speculative.execution']='false'  # don't allow speculative execution which might launch duplicate mappers
+    
     # the task could be quite slow... make sure framework doesn't kill it
     timeout_min = 120
     timeout_ms = 60000*timeout_min
@@ -290,7 +291,7 @@ class CbirQueryIndexShardFlow(core.PipesFlow):
     return
   
   def PreRunConfig(self):
-    self.num_reduce_jobs = mr.GetNumActiveTaskTrackers()*2
+    self.num_reduce_jobs = mr.GetNumActiveTaskTrackers()*8
     return
   
 

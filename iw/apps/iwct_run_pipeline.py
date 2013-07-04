@@ -91,7 +91,7 @@ class RunPipelineApp(object):
     if not py_pert.Exists(tide_uri):
       tide_uri = None
       
-    CHECK(tide_uri)
+
     html_export_path = '%s/results/html/' % local_data_path 
     if not os.path.exists(html_export_path):
       os.mkdir(html_export_path)    
@@ -113,8 +113,8 @@ class RunPipelineApp(object):
     params = itergraph_pb2.IterGraphParams()
     params.tuned_feature_extractor_params.CopyFrom(tuned_feature_extractor_params)
     params.image_matcher_config.CopyFrom(image_matcher_config.GetImageMatcherConfig(feature_type))
-    params.cbir.full.num_index_shards = 1
-    params.cbir.full.num_neighbors_per_index_shard = 80
+    params.cbir.full.num_index_shards = 4
+    params.cbir.full.num_neighbors_per_index_shard = 40
     params.cbir.full.scorer.max_results = 100
     params.cbir.full.scorer.scoring = full_pb2.QueryScorerParams.ADAPTIVE
     params.cbir.full.scorer.normalization = full_pb2.QueryScorerParams.NRC
