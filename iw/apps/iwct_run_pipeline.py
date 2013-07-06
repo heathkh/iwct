@@ -91,7 +91,6 @@ class RunPipelineApp(object):
     if not py_pert.Exists(tide_uri):
       tide_uri = None
       
-    CHECK(tide_uri)
     html_export_path = '%s/results/html/' % local_data_path 
     if not os.path.exists(html_export_path):
       os.mkdir(html_export_path)    
