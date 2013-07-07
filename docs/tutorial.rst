@@ -12,6 +12,7 @@ Tutorial
    launch_cluster
    run_pipeline
    view_results
+   shutdown
 
 
 
