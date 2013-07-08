@@ -17,7 +17,7 @@ The `NX client <http://www.nomachine.com>`_ allows you to use another computer r
 
  - `Linux <http://www.nomachine.com/download-client-linux.php>`_
  - `Mac OSX 10.3-10.6 <http://www.nomachine.com/download-package.php?Prod_Id=3834>`_
- - `Mac OSX 10.7 <http://www.nomachine.com/preview/download-package.php?Prod_Id=13>`_
+ - `Mac OSX 10.7 <http://www.nomachine.com/preview/download-package.php?Prod_Id=15>`_
  - `Windows <http://www.nomachine.com/download-package.php?Prod_Id=3835>`_
 
 .. _create_aws_account:
