@@ -14,13 +14,21 @@
    height="497"
    id="svg2"
    version="1.1"
-   inkscape:version="0.48.3.1 r9886"
+   inkscape:version="0.47 r22583"
    sodipodi:docname="continue_console.svg"
    inkscape:export-filename="/home/heathkh/git/iwct/docs/_static/continue_console.png"
    inkscape:export-xdpi="90"
    inkscape:export-ydpi="90">
   <defs
-     id="defs4" />
+     id="defs4">
+    <inkscape:perspective
+       sodipodi:type="inkscape:persp3d"
+       inkscape:vp_x="0 : 248.5 : 1"
+       inkscape:vp_y="0 : 1000 : 0"
+       inkscape:vp_z="737 : 248.5 : 1"
+       inkscape:persp3d-origin="368.5 : 165.66667 : 1"
+       id="perspective18" />
+  </defs>
   <sodipodi:namedview
      id="base"
      pagecolor="#ffffff"
@@ -30,7 +38,7 @@
      inkscape:pageshadow="2"
      inkscape:zoom="1.4"
      inkscape:cx="278.67249"
-     inkscape:cy="205.88274"
+     inkscape:cy="204.45417"
      inkscape:document-units="px"
      inkscape:current-layer="layer1"
      showgrid="false"
@@ -40,8 +48,8 @@
      fit-margin-bottom="0"
      inkscape:window-width="1790"
      inkscape:window-height="1058"
-     inkscape:window-x="322"
-     inkscape:window-y="69"
+     inkscape:window-x="122"
+     inkscape:window-y="400"
      inkscape:window-maximized="0" />
   <metadata
      id="metadata7">
@@ -51,7 +59,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -68,30 +76,8 @@
        height="497"
        width="737"
        style="opacity:0.75" />
-    <rect
-       style="opacity:0.77637132;fill:none;stroke:#0000ff;stroke-width:2.27226877;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none"
-       id="rect2996"
-       width="145.28999"
-       height="25.746363"
-       x="292.17917"
-       y="643.61072"
-       ry="12.873181" />
-    <flowRoot
-       xml:space="preserve"
-       id="flowRoot3785"
-       style="font-size:40px;font-style:normal;font-weight:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Sans"
-       transform="translate(243,-41.571428)"><flowRegion
-         id="flowRegion3787"><rect
-           id="rect3789"
-           width="214.28572"
-           height="70.714287"
-           x="217.14285"
-           y="370.21933" /></flowRegion><flowPara
-         id="flowPara3791"
-         style="font-size:12px"><flowSpan
-   style="font-weight:bold"
-   id="flowSpan3777">Hint:</flowSpan> Right click on URL and select &quot;Open link&quot; from context menu.</flowPara></flowRoot>    <g
-       transform="matrix(-0.16284369,-0.98665188,0.98665188,-0.16284369,-143.61669,895.42205)"
+    <g
+       transform="matrix(-0.16284369,-0.98665188,0.98665188,-0.16284369,-132.18812,907.56491)"
        id="layer1-5"
        inkscape:label="Calque 1"
        inkscape:transform-center-x="10"
