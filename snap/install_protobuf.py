@@ -39,9 +39,8 @@ def InstallProtobuffers():
   assert(os.path.exists(src_path))  
   cmd = 'cd %s && export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=cpp && export CCFLAGS=-fPIC && export CXXFLAGS=-fPIC && ./configure && make -j10 && sudo make install && cd python && sudo  PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=cpp python setup.py install && sudo ldconfig' % (src_path)
   ExecuteCmd(cmd)  
-  return
+  return 0
 
 
 if __name__ == "__main__":
-  InstallProtobuffers()
-  return 0
+  InstallProtobuffers()  
