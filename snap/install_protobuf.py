@@ -44,3 +44,4 @@ def InstallProtobuffers():
 
 if __name__ == "__main__":
   InstallProtobuffers()
+  return 0
