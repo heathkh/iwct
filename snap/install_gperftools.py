@@ -40,7 +40,7 @@ def InstallLibunwind():
   tar.close()
   src_path = '/tmp/libunwind-1.0.1/'
   CHECK(os.path.exists(src_path))
-  cmd = 'cd %s && export CFLAGS="-U_FORTIFY_SOURCE -fPIC" && ./configure && make && sudo make install' % (src_path)
+  cmd = 'cd %s && export CFLAGS="-U_FORTIFY_SOURCE -fPIC" && ./configure && make && sudo make install && sudo ldconfig' % (src_path)
   ExecuteCmd(cmd)
   return 0
 
@@ -56,7 +56,7 @@ def InstallPerformanceTools():
   src_path = '/tmp/gperftools-2.0/'
   CHECK(os.path.exists(src_path))
   #cmd = 'cd %s && export CCFLAGS=-fPIC && export CXXFLAGS=-fPIC && ./configure --enable-frame-pointers && make && sudo make install' % (src_path)
-  cmd = 'cd %s && export CCFLAGS=-fPIC && export CXXFLAGS=-fPIC && ./configure && make && sudo make install' % (src_path)
+  cmd = 'cd %s && export CCFLAGS=-fPIC && export CXXFLAGS=-fPIC && ./configure && make && sudo make install && sudo ldconfig' % (src_path)
   ExecuteCmd(cmd)
   return 0
 
