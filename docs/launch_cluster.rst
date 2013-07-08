@@ -95,7 +95,7 @@ Click the **Apply Licenses** button.
    
 """"""""""""""""""""""""""
 
-Return to the console and press any key to continue...
+Return to the console and press ENTER key to continue...
 
 .. image:: _static/continue_console.png
    :width: 100%
@@ -106,6 +106,8 @@ Return to the console and press any key to continue...
 When the script finishes, the MapR control panel should look like this (one green square for each node you requested).
 
 
-
+.. image:: _static/mapr_console.png
+   :width: 100%
+   :align: center
 
 
