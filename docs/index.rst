@@ -34,8 +34,8 @@ Contents
 .. toctree::
    :maxdepth: 2
    
-   tutorial
-   manual
+   tutorial/tutorial
+   manual/manual
    
    
 
