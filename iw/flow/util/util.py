@@ -227,7 +227,7 @@ class CbirCreateIndexShardsFlow(core.PipesFlow):
   
   def PreRunConfig(self):
     min_num_shards = self.ComputeMinNumIndexShards()    
-    CHECK_GE(self.num_shards, min_num_shards)
+    CHECK_GE(self.num_shards, min_num_shards, 'Increase param: cbir.full.num_index_shards')
     print 'num_shards: %d' % (self.num_shards)
     self.num_reduce_jobs = self.num_shards
     

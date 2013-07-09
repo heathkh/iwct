@@ -91,11 +91,11 @@ class DataImporterApp(object):
     for i, filename in enumerate(filenames): 
       data = open(filename).read()    
       key = py_base.Uint64ToKey(py_base.FingerprintString(data))      
-      #try:
-      im = Image.open(StringIO.StringIO(data))
-      #except:
-      #  LOG(INFO, 'Error opening %s' % (filename))
-      #  continue      
+      try:
+        im = Image.open(StringIO.StringIO(data))
+      except IOError as e:
+        LOG(INFO, 'Error opening %s - %s' % (filename, e))
+        continue      
       width, height = im.size
       jpeg = iw_pb2.JpegImage()
       jpeg.data = data
