@@ -7,5 +7,5 @@ Manual
 .. toctree::
    :maxdepth: 2
    
-   workstation/workstation
-   cluster/cluster
+   workstation/index
+   cluster/index

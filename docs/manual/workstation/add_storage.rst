@@ -1,10 +1,3 @@
-.. _manual_workstation: 
-
-###########
-Workstation
-###########
-
-
 Add Storage
 -----------
 
