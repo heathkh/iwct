@@ -4,7 +4,6 @@
 Launch cluster
 **************
 
-""""""""""""""""""""""""""
 
 Login or register a new account at http://www.mapr.com/Log-yourself-in-mapr
 
