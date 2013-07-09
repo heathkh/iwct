@@ -146,7 +146,7 @@ class DataImporterApp(object):
           raise exceptions.RuntimeError('Source file is larger than available tmp space... ')
         
         if src_size_bytes > dst_size_bytes:          
-          raise exceptions.RuntimeError('Source file is larger than available free space on destination partition... Consider expanding the root partition to make more space. [TODO(heathkh): Link to docs here] ')
+          raise exceptions.RuntimeError('Source file is larger than available free space on destination partition... Consider expanding the root partition to make more space.  See docs here: http://image-web-cloud-tools.readthedocs.org/en/latest/manual/workstation/add_storage ')
         
         print 'Downloading...'
         extract_dir = tempfile.mkdtemp()
