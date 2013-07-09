@@ -594,7 +594,7 @@ class TuneFeatureExtractorDensityFlow(core.Flow):
       p.ocv_sift_params.num_octave_layers = 3
       p.ocv_sift_params.contrast_threshold = 0.04
       p.ocv_sift_params.edge_threshold = 30
-      p.ocv_sift_params.sigma = 1.2
+      p.ocv_sift_params.sigma = 0.6
       p.ocv_sift_params.upright = True
       p.ocv_sift_params.root_sift_normalization = False
       CHECK(p.ocv_sift_params.IsInitialized())      
