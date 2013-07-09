@@ -9,3 +9,4 @@ Manual
    
    workstation/index
    cluster/index
+   costs

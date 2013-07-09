@@ -8,7 +8,7 @@ Launch cluster
 
 Login or register a new account at http://www.mapr.com/Log-yourself-in-mapr
 
-.. image:: _static/register_with_mapr.png
+.. image:: /_static/register_with_mapr.png
    :width: 100%
    :align: center
 
@@ -24,7 +24,7 @@ Open a terminal, and start a cluster with 5 nodes
 
 When the prompt shows this message, open the indicated URL in a browser.
 
-.. image:: _static/master_ready_console.png
+.. image:: /_static/master_ready_console.png
    :width: 100%
    :align: center
 
@@ -39,7 +39,7 @@ Click the **Proceed anyway** button.
 
 .. note:: You can safely ignore the scary looking SSL warning.
 
-.. image:: _static/ssl_warning.png
+.. image:: /_static/ssl_warning.png
    :width: 100%
    :align: center
 
@@ -57,7 +57,7 @@ Login as the root user.
     +-------------+--------+
 
 
-.. image:: _static/login.png
+.. image:: /_static/login.png
    :width: 100%
    :align: center
    
@@ -65,7 +65,7 @@ Login as the root user.
 
 Click the **Add license from web** button. 
 
-.. image:: _static/add_license.png
+.. image:: /_static/add_license.png
    :width: 100%
    :align: center
 
@@ -77,7 +77,7 @@ If not yet done, create a MapR account (set the remember me option to skip this 
 
 Select **M3** license and click the **Register** button.
 
-.. image:: _static/register_cluster.png
+.. image:: /_static/register_cluster.png
    :width: 100%
    :align: center
    
@@ -89,7 +89,7 @@ Click the **Return to your MapR Cluster Ui** link.
 
 Click the **Apply Licenses** button.
 
-.. image:: _static/apply_license.png
+.. image:: /_static/apply_license.png
    :width: 100%
    :align: center
    
@@ -97,7 +97,7 @@ Click the **Apply Licenses** button.
 
 Return to the console and press ENTER key to continue...
 
-.. image:: _static/continue_console.png
+.. image:: /_static/continue_console.png
    :width: 100%
    :align: center
 
@@ -106,7 +106,7 @@ Return to the console and press ENTER key to continue...
 When the script finishes, the MapR control panel should look like this (one green square for each node you requested).
 
 
-.. image:: _static/mapr_console.png
+.. image:: /_static/mapr_console.png
    :width: 100%
    :align: center
 
