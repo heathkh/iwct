@@ -6,6 +6,7 @@
 #include "snap/google/base/hashutils.h"
 #include "snap/google/glog/logging.h"
 
+
 using namespace std;
 using namespace boost;
 using namespace cbir;
@@ -26,12 +27,18 @@ public:
   void map(HadoopPipes::MapContext& context) {
     //uint64 imageid1 = KeyToUint64(context.getInputKey());
     cbir::ImageFeaturesNeighbors nearest_neighbors;
-    CHECK(nearest_neighbors.ParseFromString(context.getInputValue()));
-    //nearest_neighbors.CheckInitialized();
-    cbir::QueryResults results;
-    CHECK(scorer_->Run(nearest_neighbors, &results));
-    context.emit(context.getInputKey(), results.SerializeAsString());
-    counters_.Increment("num_images_scored");
+
+    if (nearest_neighbors.ParseFromString(context.getInputValue())){
+      //nearest_neighbors.CheckInitialized();
+      cbir::QueryResults results;
+      CHECK(scorer_->Run(nearest_neighbors, &results));
+      context.emit(context.getInputKey(), results.SerializeAsString());
+      counters_.Increment("num_images_scored");
+    }
+    else{
+      counters_.Increment("num_images_failed");
+    }
+
   }
 
 protected:
