@@ -10,4 +10,8 @@ PY_BINARY(
   SOURCES   iwct_run_pipeline.py                  
 )
 
+PY_BINARY(
+  NAME      iwct_update_code
+  SOURCES   iwct_update_code.py                  
+)
 
