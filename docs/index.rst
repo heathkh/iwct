@@ -36,6 +36,7 @@ Contents
    
    tutorial/tutorial
    manual/manual
+   guides
    
    
 
