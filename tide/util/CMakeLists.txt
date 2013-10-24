@@ -16,6 +16,11 @@ PY_BINARY (
 )
 
 PY_BINARY (
+  NAME      extract_pos_images_from_pert
+  SOURCES   extract_pos_images_from_pert.py   
+)
+
+PY_BINARY (
   NAME      upload_images_to_s3
   SOURCES   upload_images_to_s3.py   
 )
