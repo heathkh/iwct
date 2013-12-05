@@ -13,7 +13,7 @@ You must install NX client on any computer from which you wish to work.  Also be
 Install NX Client
 -----------------
 
-The `NX client <http://www.nomachine.com>`_ allows you to use another computer remotely as if it were your local machine.  It provides a fast full-screen GUI session even across poor connections.  Please install the NX client for your OS:
+The `NX client <http://turing.une.edu.au/~comp131/FAQs/nxclient/>`_ allows you to use another computer remotely as if it were your local machine.  It provides a fast full-screen GUI session even across poor connections.  Please install the NX client for your OS:
 
  - `Linux <http://graphics.stanford.edu/~heathkh/projects/nx/client/linux/>`_
  - `Mac OSX 10.3-10.6 <http://graphics.stanford.edu/~heathkh/projects/nx/client/mac/nxclient-3.5.0-7.pkg.zip>`_
