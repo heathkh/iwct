@@ -19,7 +19,7 @@ Open a terminal, and start a cluster with 5 nodes
 
 .. code-block:: bash
   
-  iwct_cluster create 5
+  cirrus_cluster_cli create 5
 
 When the prompt shows this message, open the indicated URL in a browser.
 
