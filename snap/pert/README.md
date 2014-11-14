@@ -1,0 +1,3 @@
+PERT - Portable Enormous Record Tables 
+
+Key Value storage format suitable for use as input or output  from MapReduce (compare to hadoop Sequence File, TFile, HFile). Replacement for hadoop’s java-only Sequence File.  Native C++ with bindings for java and python allows access to the format in all major languages. Makes it simple to create, process, and visualize results in whatever language is best for the job. Format suitable for efficient Map-Reduce input and output: Compressed, splittable, indexed for efficient queries, can store additional metadata (often serialization schema for key value binary format -- protobuf, avro, thrift).  Yet to be released as separate project.
