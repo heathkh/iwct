@@ -2,7 +2,7 @@
 Image Webs Cloud Toolkit
 ########################
 
-The documentation explains how to build `Image Webs <http://graphics.stanford.edu/imagewebs>`_.
+The documentation explains how to build `Image Webs <http://geometry.stanford.edu/imagewebs>`_.
 
 
 **Who is this for?**
